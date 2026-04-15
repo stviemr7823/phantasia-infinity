@@ -1,0 +1,16 @@
+# Gradle
+.gradle/
+build/
+out/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
+
+# Dynamic Game Data (Optional, but recommended so you don't overwrite saves)
+data/saves/

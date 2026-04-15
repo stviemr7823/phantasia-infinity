@@ -1,0 +1,18 @@
+ID|Name|MP Cost|Target|Effect Type|Power|Level Req|Spell Type
+1|Healing I|5|Single|Heal|5|1|Priest
+2|Healing II|15|Single|Heal|11|3|Priest
+3|Healing III|45|Single|Heal|41|6|Priest
+4|Healing IV|100|Single|Heal|81|10|Priest
+11|Fireflash I|5|Single|Damage|5|1|Wizard
+12|Fireflash II|15|Single|Damage|11|3|Wizard
+13|Fireflash III|45|Single|Damage|41|6|Wizard
+14|Fireflash IV|100|Single|Damage|81|10|Wizard
+21|Flamebolt I|10|Group|Damage|5|2|Wizard
+22|Flamebolt II|25|Group|Damage|11|5|Wizard
+31|Strength I|5|Single|Buff|2|1|Priest
+41|Sleep|25|Group|Sleep|0|2|Wizard
+42|Fear|25|Group|Debuff|0|3|Wizard
+44|Resurrection|150|Single|Heal|1|15|Priest
+51|Awaken|10|Party|Awaken|0|1|Priest
+52|Identify|10|Single|Utility|0|1|Priest
+56|Evaluation|10|Single|Utility|0|1|Priest

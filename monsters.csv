@@ -1,0 +1,81 @@
+Name,MAX,HP,ITM1,ITM2,Undead,TREAS,XP
+Skeleton,5,3,66,67,U,20,77
+Sniverling,5,10,65,8,N,35,150
+Drip Slime,5,1,0,0,N,0,97
+Undead Gnome,3,15,65,6,U,90,406
+Wild Cat,5,4,0,0,N,0,108
+Giant Bee,5,3,0,0,N,0,73
+Viper,2,20,0,0,N,200,731
+Wild Dog,4,11,0,0,N,0,164
+Orc,5,6,23,66,N,25,87
+Kobold,5,5,22,65,N,15,52
+Ranger,5,12,9,67,N,65,234
+Scribe,5,3,103,22,N,30,87
+Small Devil,4,20,69,8,U,200,336
+Zombie,4,12,68,23,U,111,245
+Ghoul,5,5,66,23,U,70,133
+Dark Elf,5,10,43,8,N,0,290
+Sting Beetle,5,10,0,0,N,0,199
+Constrictor,2,16,0,0,U,0,616
+Panther,4,8,0,0,N,0,339
+Troll Baby,5,5,66,12,N,70,136
+Goblin,4,20,0,0,N,100,752
+Barbarian,5,9,69,103,N,100,192
+Illusionist,5,6,112,103,N,150,325
+Lesser Wizard,4,7,113,23,N,200,416
+Undead Dwarf,4,22,8,69,U,600,1393
+Wight,4,20,116,82,U,200,1414
+Death Fly,4,56,0,0,N,0,2600
+Beeping Blob,5,14,0,0,N,0,920
+Killer Bee,5,8,0,0,N,0,633
+Cobra,5,12,0,0,N,0,794
+Baby Dragon,5,16,83,148,N,300,1613
+Wolf,5,0,0,0,N,0,878
+Gremlin,5,8,71,23,N,225,507
+Dwarf,5,13,72,12,N,325,731
+Dwarf Lord,5,12,73,25,N,250,934
+Priest,5,10,9,106,N,350,759
+Devil,3,30,118,88,U,500,4424
+Wraith,4,32,147,24,U,800,3605
+Giant Wasp,4,63,0,0,N,0,5197
+Hissing Skuz,5,14,0,0,N,0,1473
+Viper Moth,5,10,0,0,N,0,1753
+Asp,4,56,0,0,N,0,3958
+Small Dragon,4,37,33,153,N,325,3552
+Valley Giant,2,40,25,76,N,400,3335
+Dark Gnome,5,34,74,16,N,500,3377
+Dark Dwarf,5,72,26,87,N,1600,5477
+Gnome Mage,5,22,109,46,N,550,3825
+Gnome Lord,5,23,75,118,N,775,3384
+Demon,4,39,26,77,U,1200,8666
+Vampire,2,70,27,118,U,1800,12957
+Giant Ghost,5,18,34,153,U,700,4305
+Creeping Skum,4,38,0,0,N,800,4266
+King Cobra,2,77,0,0,N,0,8557
+Mud Elemental,2,77,0,0,N,0,8529
+Dragon,2,87,153,162,N,2200,17006
+Forest Elf,5,18,109,90,N,500,2824
+Troll,4,42,17,78,N,1300,6478
+Undead Lord,4,20,89,153,U,700,9996
+Illusion,4,24,0,0,N,1000,9789
+High Ranger,5,27,17,109,N,800,6968
+High Demon,4,96,36,94,U,1800,18515
+High Devil,2,110,35,79,U,2000,20300
+Creeping Mold,2,83,0,0,N,0,11042
+Leopard,3,97,0,0,N,0,13016
+Spirit,5,25,0,0,U,0,5663
+Sludge,3,101,0,0,N,0,12932
+Dragon King,2,133,165,175,N,2200,23593
+Storm Giant,2,115,19,79,N,1800,14472
+Cloud Giant,2,122,28,92,N,2000,19827
+Great Troll,4,98,18,91,N,1300,10783
+Wizard,5,24,36,119,N,700,11098
+Overlord,5,37,27,109,N,1000,11602
+Guagle Beast,1,90,0,0,N,0,25000
+Great Beast,1,150,0,0,N,0,36000
+Ancient Beast,1,200,0,0,N,0,60000
+Light Fairy,1,204,0,0,N,0,64150
+Boo Boo Kitty,1,203,0,0,N,0,64100
+Nikademus (U),1,212,98,39,U,0,64999
+Nikademus (N),1,209,98,39,N,64099,64300
+Lord Wood,1,209,97,38,N,64099,64500
