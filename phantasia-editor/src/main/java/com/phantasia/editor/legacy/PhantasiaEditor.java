@@ -1,5 +1,5 @@
 // phantasia-core/src/main/java/com/phantasia/core/tools/PhantasiaEditor.java
-package com.phantasia.core.tools;
+package com.phantasia.editor.legacy;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;

@@ -1,7 +1,7 @@
 // phantasia-editor/src/main/java/com/phantasia/editor/panels/ItemBrowserTab.java
 package com.phantasia.editor.panels;
 
-import com.phantasia.core.tools.ItemEditorPanel;
+import com.phantasia.editor.legacy.ItemEditorPanel;
 import com.phantasia.editor.EditorFrame;
 
 import javax.swing.*;

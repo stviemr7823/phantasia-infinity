@@ -1,5 +1,5 @@
 // phantasia-core/src/main/java/com/phantasia/core/tools/MonsterEditorPanel.java
-package com.phantasia.core.tools;
+package com.phantasia.editor.legacy;
 
 import com.phantasia.core.data.DataPaths;
 import com.phantasia.core.model.DataCore;

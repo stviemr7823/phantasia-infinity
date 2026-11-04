@@ -1,5 +1,5 @@
 // phantasia-core/src/main/java/com/phantasia/core/tools/WorldEditorPanel.java
-package com.phantasia.core.tools;
+package com.phantasia.editor.legacy;
 
 import com.phantasia.core.data.DataPaths;
 import com.phantasia.core.world.*;
@@ -11,7 +11,7 @@ import java.awt.event.*;
 import java.io.File;
 import java.io.IOException;
 
-import com.phantasia.core.tools.TourLauncher;
+import com.phantasia.editor.legacy.TourLauncher;
 
 /**
  * Tile-painter for the overland world map.

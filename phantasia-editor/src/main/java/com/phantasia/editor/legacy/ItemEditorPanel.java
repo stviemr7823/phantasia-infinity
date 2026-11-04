@@ -1,5 +1,6 @@
 // phantasia-core/src/main/java/com/phantasia/core/tools/ItemEditorPanel.java
-package com.phantasia.core.tools;
+package com.phantasia.editor.legacy;
+import com.phantasia.core.tools.ItemBaker;
 
 import com.phantasia.core.model.item.*;
 

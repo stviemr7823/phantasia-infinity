@@ -7,3 +7,5 @@ mkdir -p "$out"
 find phantasia-core/src/main/java -name '*.java' -print | LC_ALL=C sort > "$out/sources.txt"
 javac --release 21 -d "$out" @"$out/sources.txt" baseline-tests/CoreBaselineSmokeTest.java
 java -cp "$out" com.phantasia.baseline.CoreBaselineSmokeTest
+
+bash baseline-tests/verify_headless_core.sh

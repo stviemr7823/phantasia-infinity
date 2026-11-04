@@ -1,7 +1,7 @@
 // phantasia-editor/src/main/java/com/phantasia/editor/panels/DungeonEditorTab.java
 package com.phantasia.editor.panels;
 
-import com.phantasia.core.tools.DungeonEditorPanel;
+import com.phantasia.editor.legacy.DungeonEditorPanel;
 import com.phantasia.editor.EditorFrame;
 
 import javax.swing.*;

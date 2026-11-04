@@ -1,7 +1,7 @@
 // phantasia-editor/src/main/java/com/phantasia/editor/panels/WorldMapTab.java
 package com.phantasia.editor.panels;
 
-import com.phantasia.core.tools.WorldEditorPanel;
+import com.phantasia.editor.legacy.WorldEditorPanel;
 import com.phantasia.editor.EditorFrame;
 
 import javax.swing.*;
