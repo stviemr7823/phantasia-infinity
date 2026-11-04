@@ -17,7 +17,7 @@ Reconstruction findings:
 - 220 Java file paths already exist on the original GitHub `main`; 29 paths are April-only.
 - All 134 April `phantasia-core` Java sources compile with `javac --release 21`, without external engine libraries.
 - A standalone, dependency-free baseline smoke test passes 17 checks, including the April SaveManager v4 round trip.
-- The other frontend modules were not rebuilt or tested in this baseline.
+- Core and J2D sources also compile together using javac 21. The editor, JME, libGDX, and Godot frontends were not rebuilt or tested.
 
 The April source itself is **not yet committed to this branch**. Its extraction bundle and guarded import script were prepared separately, because importing the source needs verification in a working checkout.
 
@@ -39,7 +39,7 @@ The April source itself is **not yet committed to this branch**. Its extraction 
 - April's `SaveManager` is still format v4 and has no town-only access gate.
 - Core has Swing tooling under `com.phantasia.core.tools` and is not yet Android-portable as a module.
 - The editor imports some of those Swing classes and depends on J2D.
-- The original GitHub tree has no automated test sources.
+- A solo CombatConsoleRunner run completed; its message expected 2 enemies, but the generated encounter contained 1 (future encounter-scaling regression).\n- The original GitHub tree has no automated test sources.
 
 ## Next steps
 
