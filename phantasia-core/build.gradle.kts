@@ -55,3 +55,9 @@ tasks.test {
 dependencies {
     // Zero engine dependencies here to maintain modularity
 }
+// Increment 02: v5 binary-layout regression tests (separate from legacy v4 runtime).
+dependencies {
+    testImplementation(platform("org.junit:junit-bom:5.10.0"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}

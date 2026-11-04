@@ -9,3 +9,7 @@ javac --release 21 -d "$out" @"$out/sources.txt" baseline-tests/CoreBaselineSmok
 java -cp "$out" com.phantasia.baseline.CoreBaselineSmokeTest
 
 bash baseline-tests/verify_headless_core.sh
+
+# Additive v5 schema checks; production still uses save v4.
+javac --release 21 -cp "$out" -d "$out" baseline-tests/V5LayoutSmokeTest.java
+java -cp "$out" com.phantasia.baseline.V5LayoutSmokeTest
