@@ -8,308 +8,217 @@ import com.phantasia.core.world.WorldPosition;
 
 import java.io.*;
 import java.nio.file.*;
+import java.util.List;
 
 /**
  * Saves and loads the full game state to and from a binary save file.
  *
- * VERSION HISTORY:
+ * <h3>Version history</h3>
+ * <pre>
+ *   v1  Quest flags 4-byte int (32 flags). DataCore 48 bytes.
+ *   v2  Quest flags 8-byte long (64 flags). DataCore 48 bytes.
+ *   v3  WorldClock time added (4-byte float). DataCore 48 bytes.
+ *   v4  DataCore expanded 48→64 bytes (cache-line alignment). Current.
+ * </pre>
  *
- *   Version 1 (original):
- *     Quest flags stored as a 4-byte int (32 flags).
- *     Offsets: quest flags at 0x12, party size at 0x16, roster at 0x18.
+ * <h3>Migration</h3>
+ * v1–v3 saves carry 48-byte DataCore records. On load they are zero-padded
+ * to 64 bytes. The expansion zone (bytes 48–63) reads as zero, which is the
+ * correct default for every expansion field (portrait=0, traits=0,
+ * resonance=0, extended inventory empty).
  *
- *   Version 2 (current):
- *     Quest flags expanded to an 8-byte long (64 flags).
- *     Offsets: quest flags at 0x12, party size at 0x1A, roster at 0x1C.
- *     All downstream offsets shifted by +4 bytes.
- *     V1 saves are migrated on load: 32-bit flags are zero-extended to 64-bit.
- *
- * FILE LAYOUT — VERSION 2 (all values big-endian):
- *
+ * <h3>File layout — v4 (all values big-endian)</h3>
+ * <pre>
  *   Offset  Size  Field
  *   ------  ----  -----
- *   0x00     4    Magic bytes: 0x50 0x48 0x41 0x4E ("PHAN")
- *   0x04     2    Save version (currently 2)
- *   0x06     4    Party gold (int)
- *   0x0A     4    Bank gold (int)
- *   0x0E     2    World position X
- *   0x10     2    World position Y
- *   0x12     8    Quest flags (64 flags packed as a long)
- *   0x1A     2    Party size (1–6)
- *   0x1C     ?    Party roster: N × 48 bytes, one DataCore per character
- *
- * USAGE:
- *
- *   // Save:
- *   SaveManager.save(session, "data/GAME.DAT");
- *
- *   // Load (handles both v1 and v2 files automatically):
- *   GameSession session = SaveManager.load("data/GAME.DAT");
- *
- *   // Check if a save exists:
- *   if (SaveManager.saveExists("data/GAME.DAT")) { ... }
- *
- * THREAD SAFETY: not thread-safe — call from the game loop thread only.
+ *   0x00     4    Magic "PHAN"
+ *   0x04     2    Version (4)
+ *   0x06     4    Party gold
+ *   0x0A     4    Bank gold
+ *   0x0E     2    World X
+ *   0x10     2    World Y
+ *   0x12     8    Quest flags (64-bit long)
+ *   0x1A     4    WorldClock normalised time (IEEE 754 float)
+ *   0x1E     2    Party size
+ *   0x20     ?    Roster: N × 64 bytes
+ * </pre>
  */
 public final class SaveManager {
 
     private SaveManager() {}
 
     // -------------------------------------------------------------------------
-    // File layout constants — Version 2
+    // Constants
     // -------------------------------------------------------------------------
 
-    private static final byte[] MAGIC = { 0x50, 0x48, 0x41, 0x4E }; // "PHAN"
-    private static final short  CURRENT_VERSION = 2;
+    private static final byte[] MAGIC           = { 0x50, 0x48, 0x41, 0x4E };
+    private static final short  CURRENT_VERSION = 4;
 
-    // Shared offsets (same in v1 and v2)
     private static final int OFF_MAGIC       = 0x00;
     private static final int OFF_VERSION     = 0x04;
     private static final int OFF_PARTY_GOLD  = 0x06;
     private static final int OFF_BANK_GOLD   = 0x0A;
     private static final int OFF_WORLD_X     = 0x0E;
     private static final int OFF_WORLD_Y     = 0x10;
-    private static final int OFF_QUEST_FLAGS = 0x12;  // same offset, different size
+    private static final int OFF_QUEST_FLAGS = 0x12;
 
-    // Version 2 offsets (quest flags = 8 bytes → downstream shifts by +4)
-    private static final int V2_OFF_PARTY_SIZE = 0x1A;
-    private static final int V2_OFF_ROSTER     = 0x1C;
-    private static final int V2_FIXED_HEADER   = V2_OFF_ROSTER;  // 28 bytes
+    private static final int V1_OFF_PARTY_SIZE = 0x16; private static final int V1_OFF_ROSTER = 0x18; private static final int V1_RECORD = 48;
+    private static final int V2_OFF_PARTY_SIZE = 0x1A; private static final int V2_OFF_ROSTER = 0x1C; private static final int V2_RECORD = 48;
+    private static final int V3_OFF_CLOCK      = 0x1A; private static final int V3_OFF_PARTY_SIZE = 0x1E; private static final int V3_OFF_ROSTER = 0x20; private static final int V3_RECORD = 48;
+    private static final int V4_OFF_CLOCK      = 0x1A; private static final int V4_OFF_PARTY_SIZE = 0x1E; private static final int V4_OFF_ROSTER = 0x20; private static final int V4_RECORD = 64;
+    private static final int V4_FIXED_HEADER   = V4_OFF_ROSTER; // 32 bytes
 
-    // Version 1 offsets (quest flags = 4 bytes)
-    private static final int V1_OFF_PARTY_SIZE = 0x16;
-    private static final int V1_OFF_ROSTER     = 0x18;
-
-    private static final int PARTY_MAX = 6;
+    private static final int   PARTY_MAX     = 6;
+    private static final float DEFAULT_CLOCK = 0.292f;
 
     // -------------------------------------------------------------------------
-    // Save (always writes current version)
+    // Save
     // -------------------------------------------------------------------------
 
-    /**
-     * Writes the full GameSession to the given path.
-     * Creates parent directories if they don't exist.
-     * Always writes in the current format (version 2).
-     *
-     * @throws IOException if the file cannot be written
-     */
     public static void save(GameSession session, String path) throws IOException {
         DataPaths.ensureParentDirs(path);
-
         int partySize = Math.min(session.getParty().size(), PARTY_MAX);
-        int fileSize  = V2_FIXED_HEADER + partySize * DataLayout.RECORD_SIZE;
-        byte[] buf = new byte[fileSize];
+        int fileSize  = V4_FIXED_HEADER + partySize * V4_RECORD;
+        byte[] buf    = new byte[fileSize];
 
-        // --- Magic ---
         System.arraycopy(MAGIC, 0, buf, OFF_MAGIC, 4);
+        writeShort(buf, OFF_VERSION,    CURRENT_VERSION);
+        writeInt  (buf, OFF_PARTY_GOLD, session.getLedger().getPartyGold());
+        writeInt  (buf, OFF_BANK_GOLD,  session.getLedger().getBankGold());
 
-        // --- Version ---
-        writeShort(buf, OFF_VERSION, CURRENT_VERSION);
-
-        // --- Gold ---
-        writeInt(buf, OFF_PARTY_GOLD, session.getLedger().getPartyGold());
-        writeInt(buf, OFF_BANK_GOLD,  session.getLedger().getBankGold());
-
-        // --- World position ---
         WorldPosition pos = session.getWorldPosition();
-        writeShort(buf, OFF_WORLD_X, (short) pos.x());
-        writeShort(buf, OFF_WORLD_Y, (short) pos.y());
+        writeShort(buf, OFF_WORLD_X, pos.x());
+        writeShort(buf, OFF_WORLD_Y, pos.y());
 
-        // --- Quest flags (64-bit) ---
-        writeLong(buf, OFF_QUEST_FLAGS, session.getQuestFlags());
+        writeLong (buf, OFF_QUEST_FLAGS, session.getQuestFlags());
+        writeFloat(buf, V4_OFF_CLOCK,
+                (float) session.getWorldClock().getNormalisedTime());
 
-        // --- Party roster ---
-        writeShort(buf, V2_OFF_PARTY_SIZE, (short) partySize);
+        writeShort(buf, V4_OFF_PARTY_SIZE, partySize);
         for (int i = 0; i < partySize; i++) {
-            PlayerCharacter pc = session.getParty().get(i);
-            byte[] record = pc.getDataCore().getRawBytes();
-            System.arraycopy(record, 0, buf,
-                    V2_OFF_ROSTER + i * DataLayout.RECORD_SIZE,
-                    DataLayout.RECORD_SIZE);
+            byte[] rec = session.getParty().get(i).getDataCore().getRawBytes();
+            System.arraycopy(rec, 0, buf, V4_OFF_ROSTER + i * V4_RECORD, V4_RECORD);
         }
 
         Files.write(Path.of(path), buf);
-        System.out.printf("[SaveManager] Game saved to %s (%d bytes, %d characters, v%d).%n",
-                DataPaths.absolute(path), fileSize, partySize, CURRENT_VERSION);
+        System.out.printf("[SaveManager] Saved → %s  (%d bytes, %d chars, v4, 64-byte records).%n",
+                DataPaths.absolute(path), fileSize, partySize);
     }
 
     // -------------------------------------------------------------------------
-    // Load (handles v1 and v2 transparently)
+    // Load
     // -------------------------------------------------------------------------
 
-    /**
-     * Reads a save file and reconstructs a GameSession.
-     * Supports both version 1 (32-bit flags) and version 2 (64-bit flags).
-     * Version 1 saves are migrated by zero-extending the flags to 64 bits.
-     *
-     * @throws IOException              if the file cannot be read
-     * @throws SaveFormatException      if the magic header is wrong or
-     *                                  the version is unsupported
-     */
     public static GameSession load(String path) throws IOException {
         byte[] buf = Files.readAllBytes(Path.of(path));
 
-        // --- Validate magic ---
-        for (int i = 0; i < 4; i++) {
-            if (buf[OFF_MAGIC + i] != MAGIC[i]) {
-                throw new SaveFormatException(
-                        "Not a Phantasia save file: " + DataPaths.absolute(path));
-            }
-        }
+        for (int i = 0; i < 4; i++)
+            if (buf[OFF_MAGIC + i] != MAGIC[i])
+                throw new SaveFormatException("Not a Phantasia save: " + DataPaths.absolute(path));
 
-        // --- Read version ---
         short version = readShort(buf, OFF_VERSION);
 
-        // --- Gold (same offset in all versions) ---
-        int partyGold = readInt(buf, OFF_PARTY_GOLD);
-        int bankGold  = readInt(buf, OFF_BANK_GOLD);
-        PartyLedger ledger = PartyLedger.fromRaw(partyGold, bankGold);
+        int         partyGold = readInt(buf, OFF_PARTY_GOLD);
+        int         bankGold  = readInt(buf, OFF_BANK_GOLD);
+        PartyLedger ledger    = PartyLedger.fromRaw(partyGold, bankGold);
+        WorldPosition worldPos = new WorldPosition(
+                readShort(buf, OFF_WORLD_X), readShort(buf, OFF_WORLD_Y));
 
-        // --- World position (same offset in all versions) ---
-        int worldX = readShort(buf, OFF_WORLD_X);
-        int worldY = readShort(buf, OFF_WORLD_Y);
-        WorldPosition worldPos = new WorldPosition(worldX, worldY);
-
-        // --- Version-specific parsing ---
-        long questFlags;
-        int  offPartySize;
-        int  offRoster;
+        long  questFlags;
+        float clockTime;
+        int   offSize, offRoster, recordSize;
 
         switch (version) {
             case 1 -> {
-                // V1: quest flags are a 4-byte int at 0x12
-                // Zero-extend to 64 bits (upper 32 bits are 0)
-                questFlags   = readInt(buf, OFF_QUEST_FLAGS) & 0xFFFFFFFFL;
-                offPartySize = V1_OFF_PARTY_SIZE;
-                offRoster    = V1_OFF_ROSTER;
-                System.out.println("[SaveManager] Migrating v1 save → v2 "
-                        + "(32-bit flags zero-extended to 64-bit).");
+                questFlags = readInt(buf, OFF_QUEST_FLAGS) & 0xFFFFFFFFL;
+                clockTime  = DEFAULT_CLOCK;
+                offSize    = V1_OFF_PARTY_SIZE; offRoster = V1_OFF_ROSTER; recordSize = V1_RECORD;
+                System.out.println("[SaveManager] Migrating v1→v4.");
             }
             case 2 -> {
-                // V2: quest flags are an 8-byte long at 0x12
-                questFlags   = readLong(buf, OFF_QUEST_FLAGS);
-                offPartySize = V2_OFF_PARTY_SIZE;
-                offRoster    = V2_OFF_ROSTER;
+                questFlags = readLong(buf, OFF_QUEST_FLAGS);
+                clockTime  = DEFAULT_CLOCK;
+                offSize    = V2_OFF_PARTY_SIZE; offRoster = V2_OFF_ROSTER; recordSize = V2_RECORD;
+                System.out.println("[SaveManager] Migrating v2→v4.");
+            }
+            case 3 -> {
+                questFlags = readLong(buf, OFF_QUEST_FLAGS);
+                clockTime  = readFloat(buf, V3_OFF_CLOCK);
+                offSize    = V3_OFF_PARTY_SIZE; offRoster = V3_OFF_ROSTER; recordSize = V3_RECORD;
+                System.out.println("[SaveManager] Migrating v3→v4 (records padded 48→64).");
+            }
+            case 4 -> {
+                questFlags = readLong(buf, OFF_QUEST_FLAGS);
+                clockTime  = readFloat(buf, V4_OFF_CLOCK);
+                offSize    = V4_OFF_PARTY_SIZE; offRoster = V4_OFF_ROSTER; recordSize = V4_RECORD;
             }
             default -> throw new SaveFormatException(
-                    "Unsupported save version " + version
-                            + " (supported: 1, 2). File: " + DataPaths.absolute(path));
+                    "Unsupported version " + version + " (supported 1–4): "
+                            + DataPaths.absolute(path));
         }
 
-        // --- Party roster ---
-        int partySize = readShort(buf, offPartySize);
-        if (partySize < 0 || partySize > PARTY_MAX) {
+        int partySize = readShort(buf, offSize);
+        if (partySize < 0 || partySize > PARTY_MAX)
             throw new SaveFormatException("Corrupt party size: " + partySize);
-        }
 
-        java.util.List<PlayerCharacter> party = new java.util.ArrayList<>(partySize);
+        List<PlayerCharacter> party = new java.util.ArrayList<>(partySize);
         for (int i = 0; i < partySize; i++) {
-            int offset = offRoster + i * DataLayout.RECORD_SIZE;
-            byte[] record = new byte[DataLayout.RECORD_SIZE];
-            System.arraycopy(buf, offset, record, 0, DataLayout.RECORD_SIZE);
-            party.add(new PlayerCharacter(new DataCore(record)));
+            byte[] rec64 = new byte[DataLayout.RECORD_SIZE]; // 64, zero-initialised
+            int copyLen  = Math.min(recordSize, DataLayout.RECORD_SIZE);
+            System.arraycopy(buf, offRoster + i * recordSize, rec64, 0, copyLen);
+            // Bytes copyLen–63 remain 0 — correct default for expansion zone.
+            party.add(new PlayerCharacter(new DataCore(rec64)));
         }
 
-        System.out.printf("[SaveManager] Loaded %d characters from %s (v%d).%n",
+        System.out.printf("[SaveManager] Loaded %d chars from %s (v%d→v4).%n",
                 partySize, DataPaths.absolute(path), version);
 
-        return new GameSession(party, ledger, worldPos, questFlags);
+        return new GameSession(party, ledger, worldPos, questFlags, clockTime);
     }
 
     // -------------------------------------------------------------------------
     // Utility
     // -------------------------------------------------------------------------
 
-    /** True if a save file exists at the given path. */
     public static boolean saveExists(String path) {
         return Files.exists(Path.of(path));
     }
 
-    /**
-     * Creates a brand-new GameSession with a fresh party and default starting values.
-     * This is the "New Game" path — no file I/O.
-     *
-     * @param party     the newly-created 6-member party from character creation
-     * @param startPos  the world start position (read from WorldMap.getStartPosition())
-     */
-    public static GameSession newGame(java.util.List<PlayerCharacter> party,
+    public static GameSession newGame(List<PlayerCharacter> party,
                                       WorldPosition startPos) {
         return new GameSession(party, PartyLedger.newGame(), startPos, 0L);
-    }
-
-    /**
-     * Creates a GameSession from explicit values — used by JudgmentEngine
-     * and other systems that reconstruct sessions from partial state.
-     */
-    public static GameSession withSurvivors(
-            java.util.List<PlayerCharacter> survivors,
-            PartyLedger                     ledger,
-            WorldPosition                   position,
-            long                            questFlags) {
-        return new GameSession(survivors, ledger, position, questFlags);
     }
 
     // -------------------------------------------------------------------------
     // Binary helpers
     // -------------------------------------------------------------------------
 
-    private static void writeShort(byte[] buf, int offset, short value) {
-        buf[offset]     = (byte) ((value >> 8) & 0xFF);
-        buf[offset + 1] = (byte) (value        & 0xFF);
+    private static void writeShort(byte[] b, int o, int v) {
+        b[o] = (byte)((v>>8)&0xFF); b[o+1] = (byte)(v&0xFF);
     }
-
-    private static void writeShort(byte[] buf, int offset, int value) {
-        writeShort(buf, offset, (short) value);
+    private static void writeInt(byte[] b, int o, int v) {
+        b[o]=(byte)((v>>24)&0xFF); b[o+1]=(byte)((v>>16)&0xFF);
+        b[o+2]=(byte)((v>>8)&0xFF); b[o+3]=(byte)(v&0xFF);
     }
-
-    private static void writeInt(byte[] buf, int offset, int value) {
-        buf[offset]     = (byte) ((value >> 24) & 0xFF);
-        buf[offset + 1] = (byte) ((value >> 16) & 0xFF);
-        buf[offset + 2] = (byte) ((value >>  8) & 0xFF);
-        buf[offset + 3] = (byte) (value          & 0xFF);
+    private static void writeLong(byte[] b, int o, long v) {
+        for (int i = 7; i >= 0; i--) { b[o+7-i] = (byte)((v>>(i*8))&0xFF); }
     }
+    private static void writeFloat(byte[] b, int o, float v) { writeInt(b, o, Float.floatToIntBits(v)); }
 
-    private static void writeLong(byte[] buf, int offset, long value) {
-        buf[offset]     = (byte) ((value >>> 56) & 0xFF);
-        buf[offset + 1] = (byte) ((value >>> 48) & 0xFF);
-        buf[offset + 2] = (byte) ((value >>> 40) & 0xFF);
-        buf[offset + 3] = (byte) ((value >>> 32) & 0xFF);
-        buf[offset + 4] = (byte) ((value >>> 24) & 0xFF);
-        buf[offset + 5] = (byte) ((value >>> 16) & 0xFF);
-        buf[offset + 6] = (byte) ((value >>>  8) & 0xFF);
-        buf[offset + 7] = (byte) (value           & 0xFF);
+    private static short readShort(byte[] b, int o) {
+        return (short)(((b[o]&0xFF)<<8)|(b[o+1]&0xFF));
     }
-
-    private static short readShort(byte[] buf, int offset) {
-        return (short) (((buf[offset] & 0xFF) << 8)
-                | (buf[offset + 1] & 0xFF));
+    private static int readInt(byte[] b, int o) {
+        return ((b[o]&0xFF)<<24)|((b[o+1]&0xFF)<<16)|((b[o+2]&0xFF)<<8)|(b[o+3]&0xFF);
     }
-
-    private static int readInt(byte[] buf, int offset) {
-        return ((buf[offset]     & 0xFF) << 24)
-                | ((buf[offset + 1] & 0xFF) << 16)
-                | ((buf[offset + 2] & 0xFF) <<  8)
-                |  (buf[offset + 3] & 0xFF);
+    private static long readLong(byte[] b, int o) {
+        long v = 0;
+        for (int i = 0; i < 8; i++) v = (v<<8)|(b[o+i]&0xFF);
+        return v;
     }
-
-    private static long readLong(byte[] buf, int offset) {
-        return ((long)(buf[offset]     & 0xFF) << 56)
-                | ((long)(buf[offset + 1] & 0xFF) << 48)
-                | ((long)(buf[offset + 2] & 0xFF) << 40)
-                | ((long)(buf[offset + 3] & 0xFF) << 32)
-                | ((long)(buf[offset + 4] & 0xFF) << 24)
-                | ((long)(buf[offset + 5] & 0xFF) << 16)
-                | ((long)(buf[offset + 6] & 0xFF) <<  8)
-                |  (long)(buf[offset + 7] & 0xFF);
-    }
-
-    // -------------------------------------------------------------------------
-    // Checked exception for bad save files
-    // -------------------------------------------------------------------------
+    private static float readFloat(byte[] b, int o) { return Float.intBitsToFloat(readInt(b, o)); }
 
     public static class SaveFormatException extends IOException {
-        public SaveFormatException(String message) {
-            super(message);
-        }
+        public SaveFormatException(String message) { super(message); }
     }
 }

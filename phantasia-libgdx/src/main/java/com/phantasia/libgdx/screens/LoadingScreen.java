@@ -5,6 +5,7 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.phantasia.core.data.EncounterFactory;
+import com.phantasia.core.data.GameSession;
 import com.phantasia.core.data.SaveManager;
 import com.phantasia.core.model.PlayerCharacter;
 import com.phantasia.core.world.PendragonWorldMap;
@@ -148,6 +149,7 @@ public class LoadingScreen implements Screen {
     private void bootstrapNormalSession() {
         WorldMap map = PendragonWorldMap.buildWorldMap();
         game.setWorldMap(map);
+
         try {
             FeatureRegistry fr = FeatureRegistry.load(
                     DataPaths.DAT_DIR + "/features.dat");
@@ -158,9 +160,22 @@ public class LoadingScreen implements Screen {
             System.out.println("[LoadingScreen] features.dat not found — "
                     + "feature names will use fallback.");
         }
-        List<PlayerCharacter> party = EncounterFactory.generateParty();
-        game.setSession(SaveManager.newGame(party, map.getStartPosition()));
-        System.out.println("[LoadingScreen] Normal session ready — start: "
-                + map.getStartPosition());
+
+        // Try to restore a saved session; fall back to a fresh party on failure
+        String savePath = DataPaths.DAT_DIR + "/TOUR.DAT";
+        if (SaveManager.saveExists(savePath)) {
+            try {
+                game.setSession(SaveManager.load(savePath));
+                System.out.println("[LoadingScreen] Save loaded from " + savePath);
+                return;
+            } catch (IOException e) {
+                System.err.println("[LoadingScreen] Save load failed ("
+                        + e.getMessage() + ") — starting fresh.");
+            }
+        }
+
+        // No save or failed load — generate a fresh party
+        game.setSession(GameSession.freshStart());
+        System.out.println("[LoadingScreen] Fresh session started.");
     }
 }

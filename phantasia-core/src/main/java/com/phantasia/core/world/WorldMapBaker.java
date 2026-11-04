@@ -67,7 +67,7 @@ public class WorldMapBaker {
     }
 
     /** Builds the FeatureRegistry with full metadata — written to features.dat. */
-    static FeatureRegistry buildFeatureRegistry() {
+    public static FeatureRegistry buildFeatureRegistry() {
         FeatureRegistry registry = new FeatureRegistry();
 
         // Towns

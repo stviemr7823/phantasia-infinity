@@ -4,10 +4,7 @@ package com.phantasia.j2d.engine;
 import java.awt.AlphaComposite;
 import java.awt.Color;
 import java.awt.Graphics2D;
-import java.util.ArrayDeque;
-import java.util.Deque;
-import java.util.EnumMap;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Manages game screen lifecycle and transitions.
@@ -150,10 +147,16 @@ public class ScreenManager {
      */
     public void render(Graphics2D g, int width, int height) {
         // Render the bottom of the stack if there's an overlay
+        // Render every underlying screen in stack order (oldest first)
+        // so overlays composite correctly over each other
         if (!stack.isEmpty()) {
-            Screen bottom = screens.get(stack.peekFirst());
-            if (bottom != null) {
-                bottom.render(g);
+            // stack is a Deque where push() adds to the front —
+            // to render oldest-first we iterate in reverse order
+            List<GameState> ordered = new ArrayList<>(stack);
+            Collections.reverse(ordered);
+            for (GameState state : ordered) {
+                Screen screen = screens.get(state);
+                if (screen != null) screen.render(g);
             }
         }
 

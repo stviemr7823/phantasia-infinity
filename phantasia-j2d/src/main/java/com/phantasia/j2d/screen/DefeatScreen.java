@@ -1,39 +1,71 @@
 // phantasia-j2d/src/main/java/com/phantasia/j2d/screen/DefeatScreen.java
 package com.phantasia.j2d.screen;
 
+import com.phantasia.core.model.Job;
+import com.phantasia.core.model.Monster;
+import com.phantasia.core.model.PlayerCharacter;
 import com.phantasia.j2d.engine.GameCanvas;
 import com.phantasia.j2d.engine.Screen;
-import com.phantasia.j2d.render.ParchmentRenderer;
 
 import java.awt.*;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
+import java.util.List;
+import java.util.stream.Collectors;
 
 import static com.phantasia.j2d.render.ParchmentRenderer.*;
 
 /**
- * Game over screen — displayed when all party members are killed.
+ * Defeat screen — displayed when every party member is dead.
  *
- * A solemn parchment panel with the defeat message. The player can
- * press any key to exit the game (or in the future, reload a save).
+ * <p>Shows each character by name with their job class so the player
+ * has a moment of acknowledgement before the game ends. The enemies
+ * responsible are also listed briefly — "slain by X and Y" adds
+ * narrative weight to the loss.</p>
  *
- * The border uses DANGER red instead of gold to signal finality.
+ * <p>Transition data: {@link CombatExecutionScreen.ExecutionData}<br>
+ * Exit: any key after 2 s → calls the {@code onQuit} runnable
+ * (typically {@code gameLoop::stop})</p>
  */
 public class DefeatScreen implements Screen {
 
     private final Runnable onQuit;
-    private float elapsed;
+
+    private List<PlayerCharacter> party;
+    private String                slainBy;
+    private float                 elapsed;
 
     /**
-     * @param onQuit called when the player acknowledges defeat (e.g. gameLoop.stop())
+     * @param onQuit called when the player acknowledges defeat
+     *               (e.g. {@code gameLoop::stop})
      */
     public DefeatScreen(Runnable onQuit) {
         this.onQuit = onQuit;
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // Lifecycle
+    // ─────────────────────────────────────────────────────────────────────
+
     @Override
     public void onEnter(Object transitionData) {
         elapsed = 0f;
+
+        if (transitionData instanceof CombatExecutionScreen.ExecutionData data) {
+            this.party = data.party();
+
+            // Build a short "slain by" line from the distinct enemy types
+            List<String> names = data.enemies().stream()
+                    .map(Monster::getName)
+                    .distinct()
+                    .limit(3)
+                    .collect(Collectors.toList());
+            slainBy = names.isEmpty() ? "unknown foes"
+                    : String.join(", ", names);
+        } else {
+            this.party   = List.of();
+            this.slainBy = "unknown foes";
+        }
     }
 
     @Override
@@ -42,53 +74,82 @@ public class DefeatScreen implements Screen {
     }
 
     @Override
+    public void onExit() {}
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Rendering
+    // ─────────────────────────────────────────────────────────────────────
+
+    @Override
     public void render(Graphics2D g) {
         int W = GameCanvas.DESIGN_WIDTH;
         int H = GameCanvas.DESIGN_HEIGHT;
 
-        // Deep void background
         g.setColor(VOID);
         g.fillRect(0, 0, W, H);
 
-        // Parchment panel with danger-red border
-        int pw = 580, ph = 300;
+        // ── Main panel ────────────────────────────────────────────────────
+        int pw = 620;
+        int ph = 200 + Math.max(1, party.size()) * 36 + 80;
         int px = (W - pw) / 2, py = (H - ph) / 2;
         drawPanel(g, px, py, pw, ph, DANGER);
 
-        // Skull decoration
+        // ── Skull + title ─────────────────────────────────────────────────
         drawTextCentered(g, "\u2620",
-                px, py + 60, pw, TextStyle.HEADER, DANGER);
-
-        // Title
+                px, py + 56, pw, TextStyle.HEADER, DANGER);
         drawTextCentered(g, "YOUR PARTY HAS FALLEN",
-                px, py + 110, pw, TextStyle.HEADER, DANGER);
+                px, py + 106, pw, TextStyle.HEADER, DANGER);
 
-        drawDivider(g, px + 80, py + 130, pw - 160);
+        drawDivider(g, px + 80, py + 124, pw - 160);
 
-        // Epitaph
-        drawTextCentered(g, "The darkness claims another band of adventurers.",
-                px, py + 170, pw, TextStyle.BODY, TEXT);
-        drawTextCentered(g, "Their names will be forgotten by all but the wind.",
-                px, py + 200, pw, TextStyle.BODY, new Color(0x8A7F6E));
+        // ── Slain-by line ─────────────────────────────────────────────────
+        drawTextCentered(g, "Slain by: " + slainBy,
+                px, py + 158, pw, TextStyle.BODY, new Color(0xCC, 0x55, 0x55));
 
-        // Prompt (appears after 2 seconds)
+        drawDivider(g, px + 80, py + 174, pw - 160);
+
+        // ── Fallen party members ──────────────────────────────────────────
+        int rowY = py + 192;
+        for (PlayerCharacter pc : party) {
+            String jobStr = "Lv" + pc.getLevel() + " "
+                    + Job.fromValue(pc.getJob()).name();
+
+            // Name
+            drawText(g, pc.getName(), px + 50, rowY + 18,
+                    TextStyle.BODY, new Color(0x8A, 0x7F, 0x6E));
+
+            // Job
+            drawText(g, jobStr, px + 220, rowY + 18,
+                    TextStyle.DATA, BORDER_STR);
+
+            // Epitaph
+            drawText(g, "— fallen",
+                    px + 370, rowY + 18, TextStyle.DATA, DANGER);
+
+            rowY += 36;
+        }
+
+        // ── Continue prompt ───────────────────────────────────────────────
         if (elapsed > 2f) {
             float alpha = Math.min(1f, (elapsed - 2f) * 1.5f);
             Composite old = g.getComposite();
             g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
             drawTextCentered(g, "Press any key to return to the void",
-                    px, py + ph - 35, pw, TextStyle.DATA, BORDER_STR);
+                    px, py + ph - 32, pw, TextStyle.DATA, BORDER_STR);
             g.setComposite(old);
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // Input
+    // ─────────────────────────────────────────────────────────────────────
+
     @Override
     public void onKeyPressed(KeyEvent e) {
-        if (elapsed > 1.5f && onQuit != null) {
+        if (elapsed > 1.5f && onQuit != null)
             onQuit.run();
-        }
     }
 
-    @Override public void onMouseClicked(MouseEvent e) { onKeyPressed(null); }
-    @Override public void onExit() {}
+    @Override
+    public void onMouseClicked(MouseEvent e) { onKeyPressed(null); }
 }

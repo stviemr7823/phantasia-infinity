@@ -1,6 +1,7 @@
 // phantasia-j2d/src/main/java/com/phantasia/j2d/screen/EncounterSplashScreen.java
 package com.phantasia.j2d.screen;
 
+import com.phantasia.core.data.GameSession;
 import com.phantasia.core.logic.EncounterCondition;
 import com.phantasia.core.model.Monster;
 import com.phantasia.j2d.engine.GameCanvas;
@@ -34,7 +35,7 @@ public class EncounterSplashScreen implements Screen {
     public record EncounterData(
             List<Monster>      enemies,
             EncounterCondition condition,
-            Object             combatContext  // passed through to CombatPlanningScreen
+            GameSession session
     ) {}
 
     // ─────────────────────────────────────────────────────────────────────

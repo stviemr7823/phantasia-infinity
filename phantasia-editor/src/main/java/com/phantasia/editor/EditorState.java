@@ -746,6 +746,79 @@ public class EditorState {
     }
 
     // =========================================================================
+    // Built-in data import
+    // =========================================================================
+    //
+    // Seeds the editor's npcs / shops / interiorMaps collections from the
+    // programmatic buildDefault() registries in phantasia-core. Each of those
+    // registries is the game's "fresh checkout" fallback — what the runtime
+    // loads when no baked .dat file exists. Before this import existed, those
+    // defaults were authored in code only and invisible to the editor, which
+    // meant canonical NPCs like Marta could not be edited.
+    //
+    // The import is idempotent: entries whose ID already exists in the editor
+    // are skipped, so re-running the import will not stomp authored edits.
+    // Every newly-imported entry is marked dirty, so the next bakeAll writes
+    // the complete canonical set to disk. After one import + one bake, the
+    // on-disk .dat files become authoritative and the editor is the single
+    // source of truth.
+
+    /** Summary of a single {@link #importBuiltinData()} pass. */
+    public record BuiltinImportResult(
+            int npcsImported,      int npcsSkipped,
+            int shopsImported,     int shopsSkipped,
+            int interiorsImported, int interiorsSkipped
+    ) {
+        public int totalImported() {
+            return npcsImported + shopsImported + interiorsImported;
+        }
+
+        public int totalSkipped() {
+            return npcsSkipped + shopsSkipped + interiorsSkipped;
+        }
+    }
+
+    /**
+     * Imports NPCs, shops, and interior maps from their respective
+     * {@code buildDefault()} registries in phantasia-core, skipping any ID
+     * already present locally. Each imported record is marked dirty so the
+     * next {@link #bakeAll(Path)} writes the full set to disk.
+     *
+     * @return a {@link BuiltinImportResult} with per-category counts
+     */
+    public BuiltinImportResult importBuiltinData() {
+        int npcIn = 0, npcSkip = 0;
+        for (NpcDefinition npc : NpcRegistry.buildDefault().getAll()) {
+            if (npcs.containsKey(npc.getId())) { npcSkip++; continue; }
+            npcs.put(npc.getId(), npc);
+            markDirty("npc:" + npc.getId());
+            npcIn++;
+        }
+        if (npcIn > 0) fireCollectionChanged("npcs");
+
+        int shopIn = 0, shopSkip = 0;
+        for (ShopInventory shop : ShopRegistry.buildDefault().getAll()) {
+            if (shops.containsKey(shop.getShopId())) { shopSkip++; continue; }
+            shops.put(shop.getShopId(), shop);
+            markDirty("shop:" + shop.getShopId());
+            shopIn++;
+        }
+        if (shopIn > 0) fireCollectionChanged("shops");
+
+        int intIn = 0, intSkip = 0;
+        for (InteriorMap map : InteriorMapRegistry.buildDefault().getAll()) {
+            if (interiorMaps.containsKey(map.getId())) { intSkip++; continue; }
+            interiorMaps.put(map.getId(), map);
+            markDirty("interiorMap:" + map.getId());
+            intIn++;
+        }
+        if (intIn > 0) fireCollectionChanged("interiorMaps");
+
+        return new BuiltinImportResult(
+                npcIn, npcSkip, shopIn, shopSkip, intIn, intSkip);
+    }
+
+    // =========================================================================
     // Bake workflow (Section 5.4)
     // =========================================================================
 
@@ -790,8 +863,24 @@ public class EditorState {
             clearDirtyPrefix("item");
         }
 
-        // TODO: Bake interiors.dat, npcs.dat, quests.dat, shops.dat,
-        // dungeons.dat as their bakers are built (Phase 6).
+        // NPCs
+        if (hasDirtyPrefix("npc")) {
+            bakeNpcsDat(datDir.resolve("npcs.dat"));
+            clearDirtyPrefix("npc");
+        }
+
+        // Shops
+        if (hasDirtyPrefix("shop")) {
+            bakeShopsDat(datDir.resolve("shops.dat"));
+            clearDirtyPrefix("shop");
+        }
+
+        // Interior maps
+        if (hasDirtyPrefix("interiorMap")) {
+            bakeInteriorsDat(datDir.resolve("interiors.dat"));
+            clearDirtyPrefix("interiorMap");
+        }
+
     }
 
     /**
@@ -824,6 +913,18 @@ public class EditorState {
             case "item" -> {
                 bakeItemsDat(datDir.resolve("items.dat"));
                 clearDirtyPrefix("item");
+            }
+            case "npc" -> {
+                bakeNpcsDat(datDir.resolve("npcs.dat"));
+                clearDirtyPrefix("npc");
+            }
+            case "shop" -> {
+                bakeShopsDat(datDir.resolve("shops.dat"));
+                clearDirtyPrefix("shop");
+            }
+            case "interiorMap" -> {
+                bakeInteriorsDat(datDir.resolve("interiors.dat"));
+                clearDirtyPrefix("interiorMap");
             }
             default -> System.err.println("[EditorState] Unknown bake category: " + prefix);
         }
@@ -890,24 +991,19 @@ public class EditorState {
     // Internal — monster .dat I/O (48-byte DataCore blocks, no header)
     // =========================================================================
 
-    private static final int RECORD_SIZE = 48; // DataLayout.RECORD_SIZE
+    private static final int    V4_RECORD_SIZE  = 64;   // matches DataLayout.RECORD_SIZE
+    private static final int    V3_RECORD_SIZE  = 48;   // legacy DataCore
+    private static final byte[] DAT_MAGIC       = {'P', 'H', 'A', 'N'};
+    private static final int    DAT_VERSION     = 4;
+    private static final int    DAT_HEADER_SIZE = 8;    // magic + version + count
 
     private void loadMonstersDat(Path path) throws IOException {
-        byte[] data = Files.readAllBytes(path);
-        int count = data.length / RECORD_SIZE;
-        for (int i = 0; i < count; i++) {
-            byte[] block = new byte[RECORD_SIZE];
-            System.arraycopy(data, i * RECORD_SIZE, block, 0, RECORD_SIZE);
-            monsters.add(block);
-        }
+        loadDataCoreDat(path, monsters);
     }
 
+
     private void bakeMonstersDat(Path path) throws IOException {
-        try (FileOutputStream out = new FileOutputStream(path.toFile())) {
-            for (byte[] block : monsters) {
-                out.write(block);
-            }
-        }
+        bakeDataCoreDat(path, monsters);
     }
 
     // =========================================================================
@@ -915,22 +1011,13 @@ public class EditorState {
     // =========================================================================
 
     private void loadSpellsDat(Path path) throws IOException {
-        byte[] data = Files.readAllBytes(path);
-        int count = data.length / RECORD_SIZE;
-        for (int i = 0; i < count; i++) {
-            byte[] block = new byte[RECORD_SIZE];
-            System.arraycopy(data, i * RECORD_SIZE, block, 0, RECORD_SIZE);
-            spells.add(block);
-        }
+        loadDataCoreDat(path, spells);
     }
 
     private void bakeSpellsDat(Path path) throws IOException {
-        try (FileOutputStream out = new FileOutputStream(path.toFile())) {
-            for (byte[] block : spells) {
-                out.write(block);
-            }
-        }
+        bakeDataCoreDat(path, spells);
     }
+
 
     // =========================================================================
     // Internal — item .dat I/O
@@ -949,6 +1036,40 @@ public class EditorState {
         // TODO: Delegate to ItemBaker once it supports the full
         // ItemDefinition model (Phase 6).
         System.out.println("[EditorState] items.dat bake deferred to Phase 6.");
+    }
+
+    // =========================================================================
+    // Internal — NPC / Shop / Interior .dat I/O (delegates to core bakers)
+    // =========================================================================
+    //
+    // Unlike monsters/spells/items (which the editor manages as raw byte
+    // blocks), NPC, shop, and interior data live as typed domain objects.
+    // These helpers wrap each category's in-memory map into the registry
+    // type the corresponding core Baker expects, then delegate the actual
+    // file I/O. The core Baker logs its own [XxxBaker] line per bake.
+
+    private void bakeNpcsDat(Path path) throws IOException {
+        NpcRegistry registry = new NpcRegistry();
+        for (NpcDefinition npc : npcs.values()) {
+            registry.register(npc);
+        }
+        NpcBaker.bake(registry, path.toString());
+    }
+
+    private void bakeShopsDat(Path path) throws IOException {
+        ShopRegistry registry = new ShopRegistry();
+        for (ShopInventory shop : shops.values()) {
+            registry.register(shop);
+        }
+        ShopBaker.bake(registry, path.toString());
+    }
+
+    private void bakeInteriorsDat(Path path) throws IOException {
+        InteriorMapRegistry registry = new InteriorMapRegistry();
+        for (InteriorMap map : interiorMaps.values()) {
+            registry.register(map);
+        }
+        InteriorMapBaker.bake(registry, path.toString());
     }
 
     // =========================================================================
@@ -1129,5 +1250,82 @@ public class EditorState {
                 + ", dirty=" + dirtySet.size()
                 + ", undoDepth=" + undoStack.size()
                 + "]";
+    }
+    /**
+     * Loads 64-byte DataCore records from a .dat file into the given list.
+     * Transparently migrates legacy 48-byte (v3) files by zero-padding each
+     * record to the current 64-byte (v4) layout.
+     */
+    private void loadDataCoreDat(Path path, List<byte[]> target) throws IOException {
+        byte[] data = Files.readAllBytes(path);
+        if (data.length == 0) return;
+
+        if (hasDatMagic(data)) {
+            // ── v4: header + 64-byte records ─────────────────────────────
+            int version = ((data[4] & 0xFF) << 8) | (data[5] & 0xFF);
+            int count   = ((data[6] & 0xFF) << 8) | (data[7] & 0xFF);
+            int needed  = DAT_HEADER_SIZE + count * V4_RECORD_SIZE;
+            if (data.length < needed) {
+                System.err.println("[EditorState] Truncated v" + version + " "
+                        + path.getFileName() + ": have " + data.length
+                        + " bytes, need " + needed);
+                return;
+            }
+            for (int i = 0; i < count; i++) {
+                byte[] block = new byte[V4_RECORD_SIZE];
+                System.arraycopy(data, DAT_HEADER_SIZE + i * V4_RECORD_SIZE,
+                        block, 0, V4_RECORD_SIZE);
+                target.add(block);
+            }
+        } else {
+            // ── v3 legacy: no header, 48-byte records, pad to 64 ─────────
+            if (data.length % V3_RECORD_SIZE != 0) {
+                System.err.println("[EditorState] Malformed legacy "
+                        + path.getFileName() + ": " + data.length
+                        + " bytes, not divisible by " + V3_RECORD_SIZE);
+                return;
+            }
+            int count = data.length / V3_RECORD_SIZE;
+            for (int i = 0; i < count; i++) {
+                byte[] block = new byte[V4_RECORD_SIZE];  // zero-initialised
+                System.arraycopy(data, i * V3_RECORD_SIZE,
+                        block, 0, V3_RECORD_SIZE);
+                // Bytes 48–63 remain 0 — the correct default for the
+                // expansion zone (portrait, traits, resonance, extended inv).
+                target.add(block);
+            }
+            System.out.println("[EditorState] Migrated " + count
+                    + " v3 record(s) from " + path.getFileName()
+                    + " → v4 (will be re-saved with PHAN header on next bake).");
+        }
+    }
+
+    /**
+     * Writes the 64-byte DataCore records in {@code source} as a v4 .dat
+     * file with the PHAN + version + count header.
+     */
+    private void bakeDataCoreDat(Path path, List<byte[]> source) throws IOException {
+        try (DataOutputStream out = new DataOutputStream(
+                new BufferedOutputStream(new FileOutputStream(path.toFile())))) {
+            out.write(DAT_MAGIC);
+            out.writeShort(DAT_VERSION);
+            out.writeShort(source.size());
+            for (byte[] block : source) {
+                if (block.length != V4_RECORD_SIZE) {
+                    throw new IOException("Corrupt DataCore record in "
+                            + path.getFileName() + ": expected "
+                            + V4_RECORD_SIZE + " bytes, got " + block.length);
+                }
+                out.write(block);
+            }
+        }
+    }
+
+    private static boolean hasDatMagic(byte[] data) {
+        if (data.length < DAT_MAGIC.length) return false;
+        for (int i = 0; i < DAT_MAGIC.length; i++) {
+            if (data[i] != DAT_MAGIC[i]) return false;
+        }
+        return true;
     }
 }

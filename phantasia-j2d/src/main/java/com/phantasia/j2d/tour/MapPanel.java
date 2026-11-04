@@ -243,8 +243,8 @@ public class MapPanel extends JPanel {
         String tileType   = worldMap.inBounds(pos.x(), pos.y())
                 ? worldMap.getTile(pos).getType().name() : "?";
         long alive = session.getParty().stream().filter(p -> p.isAlive()).count();
-        String assets = tileLoader.loadedCount() > 0
-                ? tileLoader.loadedCount() + "/8 Kenney tiles" : "fallback colors";
+        String assets = tileLoader.getTile(TileType.PLAINS) != null
+                ? "Kenney tiles loaded" : "fallback colors";
 
         String[] lines = {
                 "PHANTASIA  ·  TOURING ENGINE",

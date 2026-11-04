@@ -18,10 +18,7 @@ import com.phantasia.core.logic.NavigationManager;
 import com.phantasia.core.logic.NavigationManager.MoveResult;
 import com.phantasia.core.logic.WorldEvent;
 import com.phantasia.core.logic.WorldEventResolver;
-import com.phantasia.core.world.EncounterTimer;
-import com.phantasia.core.world.Tile;
-import com.phantasia.core.world.WorldMap;
-import com.phantasia.core.world.WorldPosition;
+import com.phantasia.core.world.*;
 import com.phantasia.libgdx.PhantasiaGame;
 import com.phantasia.libgdx.SmoothPartyActor;
 import com.phantasia.libgdx.renderer.WorldMapRenderer;
@@ -82,8 +79,8 @@ public class GameScreen implements Screen {
 
         mapCamera     = new OrthographicCamera();
         mapViewport = new FitViewport(
-                (800 - WEST_PANE_W),
-                (480 - SOUTH_PANE_H),
+                15 * TILE_SIZE,
+                540f,
                 mapCamera);
         shapeRenderer = new ShapeRenderer();
 
@@ -141,7 +138,15 @@ public class GameScreen implements Screen {
                 0f);
         mapCamera.update();
 
-        ScreenUtils.clear(0.051f, 0.051f, 0.078f, 1f);
+        // Advance and read WorldClock for sky background colour
+        session.getWorldClock().update(delta);
+
+        WorldClock.SkyLight sky = session.getWorldClock().getSkyLight();
+        ScreenUtils.clear(
+                sky.r() / 255f,
+                sky.g() / 255f,
+                sky.b() / 255f,
+                1f);
 
         mapViewport.apply();
 

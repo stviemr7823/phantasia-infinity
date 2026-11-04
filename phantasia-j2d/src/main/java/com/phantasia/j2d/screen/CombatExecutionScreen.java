@@ -1,6 +1,7 @@
 // phantasia-j2d/src/main/java/com/phantasia/j2d/screen/CombatExecutionScreen.java
 package com.phantasia.j2d.screen;
 
+import com.phantasia.core.data.GameSession;
 import com.phantasia.core.logic.*;
 import com.phantasia.core.model.*;
 
@@ -17,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static com.phantasia.j2d.render.ParchmentRenderer.*;
+import com.phantasia.core.data.GameSession;
 
 /**
  * Phase C of the two-screen combat system — cinematic round resolution.
@@ -44,7 +46,8 @@ public class CombatExecutionScreen implements Screen {
             RoundResult           result,
             CombatNarrator        narrator,
             CombatManager         manager,
-            int                   roundNumber
+            int                   roundNumber,
+            GameSession session
     ) {}
 
     // ─────────────────────────────────────────────────────────────────────
@@ -360,7 +363,8 @@ public class CombatExecutionScreen implements Screen {
                     new CombatPlanningScreen.PlanningResult(
                             data.party(), data.enemies(),
                             data.manager(), data.narrator(),
-                            data.roundNumber() + 1
+                            data.roundNumber() + 1,
+                            data.session()
                     );
             screenManager.fadeTo(GameState.COMBAT_PLANNING, nextRound);
         }

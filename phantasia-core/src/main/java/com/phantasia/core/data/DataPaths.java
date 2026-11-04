@@ -59,6 +59,7 @@ public final class DataPaths {
     public static final String MONSTERS_DAT = DAT_DIR + "/monsters.dat";
     public static final String ITEMS_DAT    = DAT_DIR + "/items.dat";
     public static final String WORLD_DAT    = DAT_DIR + "/world.dat";
+    public static final String INTERIORS_DAT = DAT_DIR + "/interiors.dat";
 
     // -------------------------------------------------------------------------
     // .csv paths  (bakers only)
@@ -68,6 +69,10 @@ public final class DataPaths {
     public static final String MONSTERS_CSV = CSV_DIR + "/monsters.csv";
     public static final String ITEMS_CSV    = CSV_DIR + "/items.csv";
     public static final String NPC_SCHEMA = "data/game/npc_schema.json";
+
+    public static final String NPCS_DAT  = DAT_DIR + "/npcs.dat";
+    public static final String SHOPS_DAT = DAT_DIR + "/shops.dat";
+
 
     // -------------------------------------------------------------------------
     // Utilities

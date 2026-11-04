@@ -2,37 +2,60 @@
 package com.phantasia.core.model;
 
 /**
- * Binary record layout constants for all 48-byte DataCore records.
+ * Binary record layout constants for all 64-byte DataCore records.
  *
- * All offsets are byte indices into the DataCore byte array.
- * Records are exactly 48 bytes (RECORD_SIZE).  The first 15 bytes
- * are always the entity name (shared across all domains).
+ * <h3>Design rationale — 64-byte expansion</h3>
+ * The record size was increased from 48 to 64 bytes in Save v4.
+ * 64 bytes aligns with a standard CPU cache line, ensuring the entire
+ * character state is fetched in a single memory access. The additional
+ * 16 bytes (0x30–0x3F) provide expansion space without breaking the
+ * existing binary layout — all offsets 0x00–0x2F are identical to v3.
  *
- * Three domains share the same 48-byte struct:
- *   PLAYER  — PlayerCharacter, offsets 0x0F–0x2C
- *   MONSTER — Monster,         offsets 0x0F–0x17
- *   SPELL   — Spell,           offsets 0x0F–0x15
+ * <h3>Domains</h3>
+ * Three domains share the same 64-byte struct:
+ * <ul>
+ *   <li>PLAYER  — PlayerCharacter, offsets 0x0F–0x3F</li>
+ *   <li>MONSTER — Monster,         offsets 0x0F–0x17</li>
+ *   <li>SPELL   — Spell,           offsets 0x0F–0x15</li>
+ * </ul>
+ * Never cross-read domains. The NOTE on PC_XP / BODY_STATUS documents
+ * the one known offset collision between PLAYER and MONSTER domains.
  *
- * Never cross-read domains (e.g. reading PC_XP on a Monster record).
- * The NOTE on PC_XP / BODY_STATUS documents the one known collision.
+ * <h3>Expansion zone — 0x30–0x3F</h3>
+ * Bytes 48–63 are new in v4. Old saves (v1–v3) are zero-padded here
+ * on load. Field definitions in this zone are additive — no existing
+ * code breaks if these offsets read as zero.
  */
 public final class DataLayout {
 
     private DataLayout() {}
 
-    // -------------------------------------------------------------------------
-    // SHARED
-    // -------------------------------------------------------------------------
-    public static final int NAME         = 0x00;   // dec  0 — 15-byte ASCII name
+    // =========================================================================
+    // SHARED  (all domains)
+    // =========================================================================
+
+    /** Offset of the 15-byte ASCII name field. */
+    public static final int NAME         = 0x00;   // dec  0
+    /** Length of the name field in bytes. */
     public static final int NAME_LEN     = 15;
-    public static final int BODY_STATUS  = 0x20;   // dec 32 — Monster alive flag (> 0 = alive)
+
+    /**
+     * Shared status byte — semantics differ by domain.
+     * PLAYER: not used at this offset.
+     * MONSTER: alive flag (> 0 = alive).
+     * Never read BODY_STATUS on a Player record.
+     */
+    public static final int BODY_STATUS  = 0x20;   // dec 32
+
+    /** Maximum damage that can be dealt in a single hit. */
     public static final int DAMAGE_CAP   = 99;
 
-    // -------------------------------------------------------------------------
-    // PLAYER domain  (0x0F – 0x2C)
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // PLAYER domain  (0x0F – 0x3F)
+    // =========================================================================
 
-    // --- Six base stats (1 byte each, unsigned) ---
+    // ── Six base stats (1 byte each, unsigned 0–255) ─────────────────────────
+
     public static final int PC_STRENGTH     = 0x0F;  // dec 15
     public static final int PC_INTELLIGENCE = 0x10;  // dec 16
     public static final int PC_DEXTERITY    = 0x11;  // dec 17
@@ -40,62 +63,108 @@ public final class DataLayout {
     public static final int PC_CHARISMA     = 0x13;  // dec 19
     public static final int PC_LUCK         = 0x14;  // dec 20
 
-    // --- Identity (1 byte each) ---
+    // ── Identity (1 byte each) ────────────────────────────────────────────────
+
     public static final int PC_JOB          = 0x15;  // dec 21  — Job bitmask (see Job enum)
-    public static final int PC_RACE         = 0x16;  // dec 22  — Race ID (see Race enum, TBD)
+    public static final int PC_RACE         = 0x16;  // dec 22  — Race ID (see Race enum)
     public static final int PC_LEVEL        = 0x17;  // dec 23  — 1–20
 
     /**
-     * Sentinel value for PC_RACE indicating the "Undead Curse" state.
+     * Sentinel written to PC_RACE when the Undead Curse is applied.
      *
-     * When a character is raised as undead by the gods' judgment, their Race
-     * byte is set to this value.  This reuses the existing PC_RACE field as
-     * designed — the Race/Class offset at dec 22 carries undead status per
-     * the original DataCore specification.
-     *
-     * Behaviour while cursed:
-     *   - isUndead() returns true.
-     *   - isAlive() returns false (undead are not counted as living).
-     *   - setStat() is a no-op for all stat-block offsets 0x0F–0x1E
-     *     (STR through MAX_MAGIC), enforcing the stat-lock.
-     *   - Level is set to 20 (undead are "promoted" but can never advance).
-     *   - HP stays at whatever value the character had when they died.
-     *   - Cannot benefit from inn rest or standard healing spells.
-     *
-     * 0xFF (255) is safe to use as a sentinel because valid Race IDs
-     * (Race enum ordinals) occupy the range 0–14.
+     * <p>While this value is present:
+     * <ul>
+     *   <li>{@code isUndead()} returns true.</li>
+     *   <li>{@code isAlive()} returns false.</li>
+     *   <li>{@code setStat()} is a no-op for offsets 0x0F–0x1F (stat-lock range).</li>
+     *   <li>The character cannot be healed by normal means.</li>
+     * </ul>
+     * 0xFF is safe as a sentinel because valid Race IDs occupy 0–14.
      */
-    public static final int PC_RACE_UNDEAD  = 0xFF;  // dec 255 — Undead Curse sentinel
+    public static final int PC_RACE_UNDEAD  = 0xFF;  // dec 255
 
-    // --- Social class (1 byte — SocialClass ordinal, 0–3) ---
-    public static final int PC_SOCIAL_CLASS = 0x2D;  // dec 45  — PEASANT/LABORER/CRAFTSMAN/NOBLE
+    // ── Social standing ───────────────────────────────────────────────────────
 
-    // --- Vitals (16-bit big-endian pairs) ---
+    /** SocialClass ordinal (PEASANT/LABORER/CRAFTSMAN/NOBLE). */
+    public static final int PC_SOCIAL_CLASS = 0x2D;  // dec 45
+
+    // ── Vitals (16-bit big-endian pairs) ─────────────────────────────────────
+
     public static final int PC_HP           = 0x18;  // dec 24  — current Hit Points
     public static final int PC_MAX_HP       = 0x1A;  // dec 26  — maximum Hit Points
     public static final int PC_MAGIC_POWER  = 0x1C;  // dec 28  — current Magic Power
     public static final int PC_MAX_MAGIC    = 0x1E;  // dec 30  — maximum Magic Power
 
-    // --- Progression (16-bit big-endian) ---
-    public static final int PC_XP           = 0x20;  // dec 32  — Experience points
-    // NOTE: PC_XP shares dec-32 with BODY_STATUS only on Monster records.
-    //       On Player records offset 32 is XP. Never mix domains.
+    // ── Progression (16-bit big-endian) ──────────────────────────────────────
 
-    // --- Equipment slots (1 byte each — item ID) ---
+    /**
+     * Experience points (16-bit, max 65535).
+     *
+     * NOTE: shares offset 0x20 (dec 32) with {@link #BODY_STATUS}.
+     * On Player records offset 32 is XP. On Monster records it is the
+     * alive flag. Never mix domains at this offset.
+     */
+    public static final int PC_XP           = 0x20;  // dec 32
+
+    // ── Equipment slots (1 byte each — item ID) ───────────────────────────────
+
     public static final int PC_EQUIP_WEAPON  = 0x21;  // dec 33
     public static final int PC_EQUIP_SHIELD  = 0x22;  // dec 34
     public static final int PC_EQUIP_ARMOR   = 0x23;  // dec 35
     public static final int PC_EQUIP_BOW     = 0x24;  // dec 36
 
-    // --- Inventory (8 × 1 byte item IDs) ---
-    public static final int PC_INVENTORY     = 0x25;  // dec 37 — 8 bytes: 37–44
+    // ── Inventory (8 × 1-byte item IDs) ──────────────────────────────────────
+
+    /** Start of the primary inventory block. */
+    public static final int PC_INVENTORY     = 0x25;  // dec 37  — 8 bytes: 37–44
+    /** Number of primary inventory slots. */
     public static final int PC_INVENTORY_LEN = 8;
 
-    // Bytes 45–47 (0x2D–0x2F) are reserved for future use.
+    // Bytes 0x2E–0x2F (46–47) remain reserved (were reserved in v3).
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // PLAYER EXPANSION ZONE  (0x30–0x3F) — new in v4
+    //
+    // All bytes in this zone read as 0 on records loaded from v1–v3 saves.
+    // Field definitions are additive — reading 0 is a safe default for all.
+    // =========================================================================
+
+    /**
+     * Portrait sprite index (0–31).
+     * Maps to a portrait sheet row used by DialogueScreen and character UI.
+     * 0 = default portrait for the character's job class.
+     */
+    public static final int PC_PORTRAIT_ID   = 0x30;  // dec 48
+
+    /**
+     * Personality trait bitfield.
+     * Reserved for the narrative personality system (future).
+     * All bits 0 = no special traits (safe default).
+     */
+    public static final int PC_TRAITS        = 0x31;  // dec 49
+
+    /**
+     * Resonance stat — 16-bit big-endian.
+     * Reserved for the resonance/affinity system described in the design doc.
+     * Reads as 0 until the system is implemented (safe default).
+     */
+    public static final int PC_RESONANCE     = 0x32;  // dec 50  — 2 bytes: 50–51
+
+    /**
+     * Extended inventory — 9th item slot.
+     * Expands carrying capacity from 8 to 10 when {@code PC_EXTENDED_INV_LEN > 0}.
+     * 0 = empty slot.
+     */
+    public static final int PC_EXTENDED_INV  = 0x34;  // dec 52  — 2 bytes: 52–53
+    /** Number of extended inventory slots (currently 2). */
+    public static final int PC_EXTENDED_INV_LEN = 2;
+
+    // Bytes 0x36–0x3F (54–63) — reserved expansion space (10 bytes, always 0).
+
+    // =========================================================================
     // MONSTER domain  (0x0F – 0x17)
-    // -------------------------------------------------------------------------
+    // =========================================================================
+
     public static final int MON_MAX_SPAWN   = 0x0F;  // dec 15
     public static final int MON_HP          = 0x10;  // dec 16  — single byte, 0–255
     public static final int MON_ITEM_1      = 0x11;  // dec 17
@@ -104,13 +173,15 @@ public final class DataLayout {
     public static final int MON_TREASURE    = 0x14;  // dec 20  — 16-bit big-endian
     public static final int MON_XP          = 0x16;  // dec 22  — 16-bit big-endian
 
-    // Flag masks for MON_FLAGS
+    /** Flag mask: this monster is undead (immune to some damage types). */
     public static final int MON_FLAG_UNDEAD    = 0x01;
+    /** Flag mask: this monster is amorphous (immune to slash/pierce). */
     public static final int MON_FLAG_AMORPHOUS = 0x02;
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // SPELL domain  (0x0F – 0x15)
-    // -------------------------------------------------------------------------
+    // =========================================================================
+
     public static final int SPELL_MP_COST      = 0x0F;  // dec 15
     public static final int SPELL_POWER        = 0x10;  // dec 16
     public static final int SPELL_TARGET       = 0x11;  // dec 17
@@ -119,24 +190,30 @@ public final class DataLayout {
     public static final int SPELL_EFFECT_TYPE  = 0x14;  // dec 20
     public static final int SPELL_ID           = 0x15;  // dec 21
 
-    // -------------------------------------------------------------------------
-    // Stat-lock range for the Undead Curse
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // Undead stat-lock range
+    // =========================================================================
 
     /**
-     * First DataCore offset subject to the undead stat-lock (inclusive).
-     * Maps to PC_STRENGTH (index 0 of the stat block, offset 0x0F).
+     * First offset subject to the undead stat-lock (inclusive).
+     * Maps to PC_STRENGTH (0x0F, dec 15).
      */
     public static final int PC_STAT_LOCK_START = 0x0F;  // dec 15
 
     /**
-     * Last DataCore offset subject to the undead stat-lock (inclusive).
-     * Maps to the high byte of PC_MAX_MAGIC (offset 0x1F, end of index 16).
+     * Last offset subject to the undead stat-lock (inclusive).
+     * Maps to the high byte of PC_MAX_MAGIC (0x1F, dec 31).
      */
     public static final int PC_STAT_LOCK_END   = 0x1F;  // dec 31
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // Record size
-    // -------------------------------------------------------------------------
-    public static final int RECORD_SIZE = 48;
+    // =========================================================================
+
+    /**
+     * Size of a single DataCore record in bytes.
+     * Increased from 48 (v1–v3) to 64 (v4) to align with CPU cache lines.
+     * The additional 16 bytes occupy the expansion zone 0x30–0x3F.
+     */
+    public static final int RECORD_SIZE = 64;
 }

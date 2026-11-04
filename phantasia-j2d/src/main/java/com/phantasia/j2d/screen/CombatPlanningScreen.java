@@ -9,7 +9,6 @@ import com.phantasia.j2d.engine.GameCanvas;
 import com.phantasia.j2d.engine.GameState;
 import com.phantasia.j2d.engine.Screen;
 import com.phantasia.j2d.engine.ScreenManager;
-import com.phantasia.j2d.render.ParchmentRenderer;
 
 import java.awt.*;
 import java.awt.event.KeyEvent;
@@ -19,6 +18,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import static com.phantasia.j2d.render.ParchmentRenderer.*;
+import com.phantasia.core.data.GameSession;
 
 /**
  * Phase B of the two-screen combat system — the tactical planning screen.
@@ -43,7 +43,8 @@ public class CombatPlanningScreen implements Screen {
             List<Monster>         enemies,
             CombatManager         manager,
             CombatNarrator        narrator,
-            int                   roundNumber
+            int                   roundNumber,
+            GameSession           session
     ) {}
 
     // ─────────────────────────────────────────────────────────────────────
@@ -71,6 +72,8 @@ public class CombatPlanningScreen implements Screen {
 
     // Menu grid
     private static final int MENU_COLS    = 2;
+
+    private GameSession session;
 
     // ─────────────────────────────────────────────────────────────────────
     // Available actions (displayed in menu)
@@ -126,7 +129,8 @@ public class CombatPlanningScreen implements Screen {
     public void onEnter(Object transitionData) {
         if (transitionData instanceof EncounterSplashScreen.EncounterData ed) {
             // First round — build the combat manager
-            this.party       = (List<PlayerCharacter>) ed.combatContext();
+            this.party       = ed.session().getParty();
+            this.session     = ed.session();
             this.enemies     = ed.enemies();
             this.condition   = ed.condition();
             this.combatManager = new CombatManager(party, enemies, spellFactory, condition);
@@ -139,6 +143,7 @@ public class CombatPlanningScreen implements Screen {
             this.combatManager = pr.manager();
             this.narrator      = pr.narrator();
             this.roundNumber   = pr.roundNumber();
+            this.session       = pr.session();
         }
 
         // Reset selection
@@ -489,7 +494,7 @@ public class CombatPlanningScreen implements Screen {
 
         // Build execution data
         CombatExecutionScreen.ExecutionData execData = new CombatExecutionScreen.ExecutionData(
-                party, enemies, result, narrator, combatManager, roundNumber
+                party, enemies, result, narrator, combatManager, roundNumber, session
         );
 
         screenManager.fadeTo(GameState.COMBAT_EXECUTION, execData);

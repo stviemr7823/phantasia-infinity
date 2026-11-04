@@ -88,7 +88,7 @@ public class GameLoop implements Runnable {
     public void awaitShutdown() {
         if (thread == null) return;
         try {
-            thread.join(2000);
+            thread.join();  // no timeout — blocks until gameLoop.stop() is called
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
@@ -130,7 +130,7 @@ public class GameLoop implements Runnable {
                             GameCanvas.DESIGN_HEIGHT);
                 } finally {
                     g.dispose();
-                    canvas.endFrame();
+                    canvas.endFrame(g);
                 }
                 frameCount++;
             }

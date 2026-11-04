@@ -26,6 +26,7 @@ public class EditorMenuBar extends JMenuBar implements EditorStateListener {
     private Runnable onSaveProject;
     private Runnable onSaveProjectAs;
     private Runnable onBakeAll;
+    private Runnable onImportBuiltins;
     private Runnable onBakeAndTour;
     private Runnable onTourLaunch;
     private Runnable onMapGenerator;

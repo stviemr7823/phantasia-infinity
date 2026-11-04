@@ -32,6 +32,13 @@ public enum Direction {
         };
     }
 
+    public int dx() {
+        return switch (this) { case EAST -> 1; case WEST -> -1; default -> 0; };
+    }
+    public int dy() {
+        return switch (this) { case SOUTH -> 1; case NORTH -> -1; default -> 0; };
+    }
+
     /** Returns the lowercase string WorldPosition.step() currently expects. */
     public String toLegacyString() {
         return name().toLowerCase();

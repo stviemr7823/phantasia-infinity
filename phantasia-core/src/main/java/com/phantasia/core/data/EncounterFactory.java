@@ -3,7 +3,6 @@ package com.phantasia.core.data;
 
 import com.phantasia.core.model.*;
 import com.phantasia.core.model.CombatRank;
-
 import com.phantasia.core.logic.FormulaEngine;
 import com.phantasia.core.logic.EncounterCondition;
 
@@ -12,20 +11,27 @@ import java.util.*;
 /**
  * Single source of truth for generating randomised parties and enemy encounters.
  *
- * Previously this logic lived in CombatConsoleRunner (a console demo) and was
- * duplicated in a stripped-down form in CombatDemoInitializer (the JME module).
- * It now lives here so any frontend — console, JME, future GUI — can call it
- * without re-implementing or copy-pasting character construction.
+ * <h3>Party-size scaling (design doc §III)</h3>
+ * {@link #generateEncounter(int)} scales both monster count and type variety
+ * to the current party size using the formula:
+ * <pre>
+ *   targetCount = ceil(partySize × 1.5)
+ *   typeCount   = max(1, min(3, partySize / 2))
+ * </pre>
+ * A solo adventurer fights 2 monsters of 1 type.
+ * A full party of 6 fights 9 monsters spread across up to 3 types.
+ * The no-arg {@link #generateEncounter()} defaults to party size 4
+ * (a 6-monster encounter with 2 types) for callers that don't have
+ * access to the current party.
  *
- * USAGE:
- *   // In a console runner or JME initializer:
- *   List<PlayerCharacter> party   = EncounterFactory.generateParty();
- *   List<Monster>         enemies = EncounterFactory.generateEncounter();
- *   EncounterCondition    cond    = FormulaEngine.rollEncounterCondition();
+ * <h3>Usage</h3>
+ * <pre>
+ *   // Preferred — party-aware:
+ *   List&lt;Monster&gt; enemies = EncounterFactory.generateEncounter(session.getParty());
  *
- *   // For a fixed test battle (deterministic, no RNG):
- *   List<PlayerCharacter> party   = EncounterFactory.buildTestParty();
- *   List<Monster>         enemies = EncounterFactory.buildTestEncounter();
+ *   // Legacy / fallback:
+ *   List&lt;Monster&gt; enemies = EncounterFactory.generateEncounter();
+ * </pre>
  */
 public final class EncounterFactory {
 
@@ -34,7 +40,7 @@ public final class EncounterFactory {
     private static final Random RNG = new Random();
 
     // =========================================================================
-    // Name pool (shared across all generation modes)
+    // Name pool
     // =========================================================================
 
     private static final String[] NAME_POOL = {
@@ -49,8 +55,7 @@ public final class EncounterFactory {
 
     /**
      * Builds a randomised 6-member party, one character per Job.
-     * Stats are job-themed with small random variance so each run feels distinct.
-     * Combat ranks are assigned automatically by job role.
+     * Stats are job-themed with small random variance.
      */
     public static List<PlayerCharacter> generateParty() {
         List<String> names = new ArrayList<>(Arrays.asList(NAME_POOL));
@@ -78,8 +83,6 @@ public final class EncounterFactory {
 
     /**
      * Builds a single PlayerCharacter with job-appropriate stats.
-     * Intelligence and Luck are populated so FormulaEngine formulas
-     * have meaningful data to work with.
      */
     public static PlayerCharacter buildCharacter(String name, Job job) {
         DataCore core = new DataCore(new byte[DataLayout.RECORD_SIZE]);
@@ -146,7 +149,7 @@ public final class EncounterFactory {
     }
 
     // =========================================================================
-    // Randomised encounter — 1–3 monster types from the bestiary
+    // Randomised encounter — party-size scaled
     // =========================================================================
 
     // { name, baseHp, maxGroupSize, xpReward }
@@ -163,36 +166,88 @@ public final class EncounterFactory {
     };
 
     /**
-     * Generates a randomised enemy formation (1–3 monster types,
-     * variable group size per type). XP values are stored on each monster.
+     * Generates a party-scaled encounter from a live party list.
+     * Counts only alive members for the scaling calculation —
+     * a weakened party fights fewer monsters.
+     *
+     * @param party the current party (may be 1–6 members)
      */
-    public static List<Monster> generateEncounter() {
-        int typeCount = 1;
+    public static List<Monster> generateEncounter(List<PlayerCharacter> party) {
+        int aliveCount = (int) party.stream()
+                .filter(PlayerCharacter::isAlive)
+                .count();
+        return generateEncounter(Math.max(1, aliveCount));
+    }
 
-        List<Integer> idx = new ArrayList<>();
-        for (int i = 0; i < BESTIARY.length; i++) idx.add(i);
-        Collections.shuffle(idx, RNG);
+    /**
+     * Generates a party-scaled encounter for the given party size.
+     *
+     * <h4>Scaling formula</h4>
+     * <pre>
+     *   targetCount = ceil(partySize × 1.5)
+     *   typeCount   = max(1, min(3, partySize / 2))
+     * </pre>
+     *
+     * <table border="1">
+     *   <tr><th>Party</th><th>Monsters</th><th>Types</th></tr>
+     *   <tr><td>1</td><td>2</td><td>1</td></tr>
+     *   <tr><td>2</td><td>3</td><td>1</td></tr>
+     *   <tr><td>3</td><td>5</td><td>1</td></tr>
+     *   <tr><td>4</td><td>6</td><td>2</td></tr>
+     *   <tr><td>5</td><td>8</td><td>2</td></tr>
+     *   <tr><td>6</td><td>9</td><td>3</td></tr>
+     * </table>
+     *
+     * @param partySize number of active party members (1–6)
+     */
+    public static List<Monster> generateEncounter(int partySize) {
+        int clampedSize  = Math.max(1, Math.min(6, partySize));
+        int targetCount  = (int) Math.ceil(clampedSize * 1.5);
+        int typeCount    = Math.max(1, Math.min(3, clampedSize / 2));
+
+        // Pick random distinct enemy types
+        List<Integer> indices = new ArrayList<>();
+        for (int i = 0; i < BESTIARY.length; i++) indices.add(i);
+        Collections.shuffle(indices, RNG);
 
         List<Monster> all = new ArrayList<>();
-        for (int t = 0; t < typeCount; t++) {
-            Object[] row      = BESTIARY[idx.get(t)];
+        int remaining = targetCount;
+
+        for (int t = 0; t < typeCount && remaining > 0; t++) {
+            Object[] row      = BESTIARY[indices.get(t)];
             String   name     = (String) row[0];
-            int      hp       = (int)    row[1];
+            int      baseHp   = (int)    row[1];
             int      maxGroup = (int)    row[2];
             int      xp       = (int)    row[3];
-            int      count    = 1 + RNG.nextInt(maxGroup);
+
+            // Last type takes all remaining slots; others take an even share
+            // but never exceed the type's natural maxGroup per spawn
+            int share = (t == typeCount - 1)
+                    ? remaining
+                    : Math.max(1, targetCount / typeCount);
+            int count = Math.min(share, Math.min(remaining, maxGroup));
 
             for (int i = 0; i < count; i++) {
                 String label = count > 1 ? name + " " + (char)('A' + i) : name;
-                all.add(buildMonster(label, Math.max(1, hp + vary(3)), count, xp));
+                all.add(buildMonster(label, Math.max(1, baseHp + vary(3)), count, xp));
             }
+            remaining -= count;
         }
+
         return all;
     }
 
     /**
-     * Builds a single monster DataCore. Public so callers (including tests)
-     * can construct one-off monsters without going through generateEncounter().
+     * Generates an encounter with a default party size of 4.
+     * Use {@link #generateEncounter(List)} or {@link #generateEncounter(int)}
+     * when the actual party is available.
+     */
+    public static List<Monster> generateEncounter() {
+        return generateEncounter(4);
+    }
+
+    /**
+     * Builds a single monster DataCore.
      */
     public static Monster buildMonster(String name, int hp, int groupSize, int xp) {
         DataCore core = new DataCore(new byte[DataLayout.RECORD_SIZE]);
@@ -201,17 +256,16 @@ public final class EncounterFactory {
         core.setStat (DataLayout.MON_MAX_SPAWN, groupSize);
         core.setShort(DataLayout.MON_XP,        xp);
         core.setStat (DataLayout.BODY_STATUS,   1);
-        core.setShort(DataLayout.MON_TREASURE, Math.max(1, xp / 2));
+        core.setShort(DataLayout.MON_TREASURE,  Math.max(1, xp / 2));
         return new Monster(core);
     }
 
     // =========================================================================
-    // Fixed test fixtures — deterministic, no RNG, good for demo and unit tests
+    // Fixed test fixtures
     // =========================================================================
 
     /**
-     * Returns a deterministic 2-member test party — useful for the JME demo
-     * initializer and unit tests that need predictable starting state.
+     * Deterministic 2-member test party. Useful for JME demo and unit tests.
      */
     public static List<PlayerCharacter> buildTestParty() {
         List<PlayerCharacter> party = new ArrayList<>();
@@ -230,7 +284,7 @@ public final class EncounterFactory {
     }
 
     /**
-     * Returns a deterministic 2-monster test encounter.
+     * Deterministic 2-monster test encounter.
      */
     public static List<Monster> buildTestEncounter() {
         List<Monster> monsters = new ArrayList<>();
@@ -243,12 +297,6 @@ public final class EncounterFactory {
     // Helpers
     // =========================================================================
 
-
-    private static int dice(int sides) {
-        return 1 + RNG.nextInt(sides);
-    }
-
-    private static int vary(int range) {
-        return RNG.nextInt(range * 2 + 1) - range;
-    }
+    private static int dice(int sides) { return 1 + RNG.nextInt(sides); }
+    private static int vary(int range)  { return RNG.nextInt(range * 2 + 1) - range; }
 }

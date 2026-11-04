@@ -4,10 +4,12 @@ package com.phantasia.j2d.engine;
 /**
  * The set of game screens that the {@link ScreenManager} can transition between.
  *
- * Each value maps to a single {@link Screen} implementation. The ScreenManager
- * maintains a {@code Map<GameState, Screen>} and handles transitions between them.
+ * Each value maps to a single {@link Screen} implementation registered in GameMain.
+ * Full-screen transitions use {@code fadeTo()}; overlays use {@code push()}/{@code pop()}.
  */
 public enum GameState {
+
+    // ── Full-screen states ────────────────────────────────────────────────
 
     /** World roam — tile-based free movement with float coordinates. */
     WORLD_ROAM,
@@ -21,11 +23,11 @@ public enum GameState {
     /** Combat execution — cinematic round resolution with animations. */
     COMBAT_EXECUTION,
 
-    /** Town services — inn, shop, guild, bank menus. */
+    /** Town interior — walkable tile map with NPCs and service counters. */
     TOWN,
 
-    /** Dialogue overlay — NPC conversation with portrait. */
-    DIALOGUE,
+    /** Dungeon roam — interior tile movement with fog of war. */
+    DUNGEON,
 
     /** Victory screen — post-combat loot and XP summary. */
     VICTORY,
@@ -33,9 +35,24 @@ public enum GameState {
     /** Defeat screen — party wipe. */
     DEFEAT,
 
-    /** Dungeon roam — interior tile movement. */
-    DUNGEON,
+    // ── Overlay states (pushed/popped over a full-screen state) ──────────
 
-    /** Pause overlay — pushed on top of any screen. */
-    PAUSE
+    /** Shop overlay — buy/sell items with a merchant NPC. */
+    SHOP,
+
+    /** Inn overlay — restore party HP/MP for gold. */
+    INN,
+
+    /** Guild overlay — level up party members for gold. */
+    GUILD,
+
+    /** Bank overlay — deposit and withdraw party gold. */
+    BANK,
+
+    /** Dialogue overlay — NPC conversation with portrait. */
+    DIALOGUE,
+
+    /** Pause overlay — resume or quit to desktop. */
+    PAUSE,
+
 }

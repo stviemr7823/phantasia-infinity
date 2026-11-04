@@ -3,6 +3,7 @@ package com.phantasia.core.data;
 
 import com.phantasia.core.model.PlayerCharacter;
 import com.phantasia.core.world.DungeonFloor;
+import com.phantasia.core.world.WorldClock;
 import com.phantasia.core.world.WorldPosition;
 
 import java.util.ArrayList;
@@ -11,23 +12,26 @@ import java.util.List;
 /**
  * The primary data container for a single playthrough.
  *
- * GameSession holds everything that defines the current state of a game
+ * <p>GameSession holds everything that defines the current state of a game
  * in progress: the party roster, the party's pooled gold (via PartyLedger),
- * the world position, and the 64-bit quest flag bitfield.
+ * the world position, the 64-bit quest flag bitfield, and the world clock.</p>
  *
- * LIFECYCLE:
- *   - Created by SaveManager.newGame() for a fresh start, or by
- *     SaveManager.load() when restoring from a save file.
- *   - Mutated during play (position, gold, quest flags, party roster).
- *   - Serialized by SaveManager.save() on game exit.
+ * <h3>Lifecycle</h3>
+ * <ul>
+ *   <li>Created by {@link #freshStart()} for a quick-start with a default party.</li>
+ *   <li>Created by {@link SaveManager#newGame(List, WorldPosition)} after character creation.</li>
+ *   <li>Restored by {@link SaveManager#load(String)} from a save file.</li>
+ *   <li>Mutated during play (position, gold, quest flags, party roster).</li>
+ *   <li>Serialized by {@link SaveManager#save(GameSession, String)} on exit.</li>
+ * </ul>
  *
- * QUEST FLAGS:
- *   Stored as a 64-bit long, supporting up to 64 named flags from the
- *   {@link QuestFlag} enum. All bit operations use 1L (long literal)
- *   to ensure correct shifting for bits 32–63.
+ * <h3>Quest flags</h3>
+ * Stored as a 64-bit long, supporting up to 64 named flags from the
+ * {@link QuestFlag} enum. All bit operations use {@code 1L} (long literal)
+ * to ensure correct shifting for bits 32–63.
  *
- * THREAD SAFETY:
- *   Not thread-safe. All mutations happen on the game loop thread.
+ * <h3>Thread safety</h3>
+ * Not thread-safe. All mutations happen on the game loop thread.
  */
 public class GameSession {
 
@@ -35,52 +39,63 @@ public class GameSession {
     private final PartyLedger           ledger;
     private WorldPosition               position;
     private long                        questFlags;
+    private final WorldClock            worldClock;
 
     // Runtime-only state (not serialized in the save file)
-    private DungeonFloor                currentDungeonFloor;
+    private DungeonFloor currentDungeonFloor;
 
     // -------------------------------------------------------------------------
-    // Construction
+    // Constructors
     // -------------------------------------------------------------------------
 
     /**
-     * Full constructor — used by SaveManager.load() and newGame().
-     *
-     * @param party      the party roster (mutable list, owned by this session)
-     * @param ledger     the party's gold ledger
-     * @param position   the current world map position
-     * @param questFlags the 64-bit quest flag bitfield
+     * Primary constructor — used by the static factory methods and
+     * {@link SaveManager#newGame(List, WorldPosition)}.
+     * World clock starts at the default time (07:00).
      */
     public GameSession(List<PlayerCharacter> party,
                        PartyLedger           ledger,
                        WorldPosition         position,
                        long                  questFlags) {
-        this.party      = party;
+        this.party      = new ArrayList<>(party);
         this.ledger     = ledger;
         this.position   = position;
         this.questFlags = questFlags;
+        this.worldClock = new WorldClock();  // default: 07:00 (just after dawn)
     }
 
     /**
-     * Creates a brand-new GameSession with a fresh party and default values.
-     * Delegates to EncounterFactory for the starting roster.
+     * Restore constructor — used exclusively by {@link SaveManager#load(String)}.
+     * Restores the world clock to the time at which the game was saved.
+     *
+     * @param savedClockTime normalised time-of-day (0.0–1.0) from the save file
+     */
+    GameSession(List<PlayerCharacter> party,
+                PartyLedger           ledger,
+                WorldPosition         position,
+                long                  questFlags,
+                float                 savedClockTime) {
+        this.party      = new ArrayList<>(party);
+        this.ledger     = ledger;
+        this.position   = position;
+        this.questFlags = questFlags;
+        this.worldClock = new WorldClock(savedClockTime);
+    }
+
+    // -------------------------------------------------------------------------
+    // Static factory methods
+    // -------------------------------------------------------------------------
+
+    /**
+     * Creates a brand-new session using {@link EncounterFactory}'s default party.
+     *
+     * <p>Used by the JME and libGDX frontends, and any context that needs a
+     * working session without going through a character creation screen.</p>
      */
     public static GameSession freshStart() {
         List<PlayerCharacter> newParty = EncounterFactory.generateParty();
         return new GameSession(newParty, PartyLedger.newGame(),
                 new WorldPosition(0, 0), 0L);
-    }
-
-    /**
-     * Creates a brand-new GameSession with an externally-built party.
-     * Used by character creation and SaveManager.newGame().
-     *
-     * @param party     the newly-created party
-     * @param startPos  the starting world position
-     */
-    public static GameSession newGame(List<PlayerCharacter> party,
-                                      WorldPosition         startPos) {
-        return new GameSession(party, PartyLedger.newGame(), startPos, 0L);
     }
 
     // -------------------------------------------------------------------------
@@ -112,7 +127,7 @@ public class GameSession {
     /** Returns the party's current world map position. */
     public WorldPosition getWorldPosition() { return position; }
 
-    /** Alias for getWorldPosition() — used by some older callers. */
+    /** Alias for {@link #getWorldPosition()} — preserved for older callers. */
     public WorldPosition getPosition() { return position; }
 
     /** Updates the party's world map position. */
@@ -141,15 +156,23 @@ public class GameSession {
     }
 
     // -------------------------------------------------------------------------
+    // World clock
+    // -------------------------------------------------------------------------
+
+    /**
+     * Returns the world clock.
+     * Update it each game-loop tick; read it for sky colour and weather biasing.
+     */
+    public WorldClock getWorldClock() { return worldClock; }
+
+    // -------------------------------------------------------------------------
     // Dungeon state (runtime only — not serialized)
     // -------------------------------------------------------------------------
 
-    /** Returns the current dungeon floor, or null if not in a dungeon. */
-    public DungeonFloor getDungeonFloor() {
-        return currentDungeonFloor;
-    }
+    /** Returns the current dungeon floor, or {@code null} if not in a dungeon. */
+    public DungeonFloor getDungeonFloor() { return currentDungeonFloor; }
 
-    /** Sets the current dungeon floor (null when leaving a dungeon). */
+    /** Sets the current dungeon floor ({@code null} when leaving a dungeon). */
     public void setCurrentDungeonFloor(DungeonFloor floor) {
         this.currentDungeonFloor = floor;
     }

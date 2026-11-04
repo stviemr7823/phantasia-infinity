@@ -34,16 +34,13 @@ public class WorldMapRenderer {
     // Constants
     // -------------------------------------------------------------------------
 
-    public static final float TILE_SIZE = 32f;
+    public static final float TILE_SIZE = 64f;
 
-    // -------------------------------------------------------------------------
-    // Feature dot geometry  (mirrors j2d MapPanel)
-    //
-    // J2D MapPanel: TILE = 64 px, dot radius = 7 px, corner gap = 5 px.
-    // LibGDX TILE_SIZE = 32 world units.  At zoom 0.5 each world unit = 2 px:
-    //   DOT_RADIUS  3.5 wu × 2 px/wu = 7 px   ✓ matches j2d
-    //   DOT_GAP     2.5 wu × 2 px/wu = 5 px   ✓ matches j2d
-    // -------------------------------------------------------------------------
+
+    // LibGDX TILE_SIZE = 64 world units. The FitViewport is set to
+    // (15 × 64) × (540) = 960×540 world units. FitViewport scales this
+    // to the physical screen with letterboxing, giving exactly 15 tiles
+    // wide at any resolution — matching the design-doc Adventure Scale.
 
     private static final float DOT_RADIUS = 3.5f;
     private static final float DOT_GAP    = 2.5f;
