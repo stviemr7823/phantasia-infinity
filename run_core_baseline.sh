@@ -13,3 +13,7 @@ bash baseline-tests/verify_headless_core.sh
 # Additive v5 schema checks; production still uses save v4.
 javac --release 21 -cp "$out" -d "$out" baseline-tests/V5LayoutSmokeTest.java
 java -cp "$out" com.phantasia.baseline.V5LayoutSmokeTest
+
+# Additive typed v5 player-state smoke checks; gameplay still uses v4.
+javac --release 21 -cp "$out" -d "$out" baseline-tests/PlayerStateV5SmokeTest.java
+java -cp "$out" com.phantasia.baseline.PlayerStateV5SmokeTest
