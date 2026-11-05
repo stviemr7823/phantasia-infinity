@@ -7,7 +7,6 @@ import com.phantasia.core.model.PlayerRuntimeV5;
 import com.phantasia.core.model.Spell;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -69,6 +68,8 @@ public final class CombatRoundV5 {
 
     public RoundResult runRound(List<PlayerOrder> orders) {
         Objects.requireNonNull(orders, "orders");
+        if (outcome() != CombatOutcome.ONGOING)
+            throw new IllegalStateException("Cannot run another round after combat has ended");
         Map<PlayerRuntimeV5, PlayerOrder> planned = new IdentityHashMap<>();
         for (PlayerOrder order : orders) {
             Objects.requireNonNull(order, "order");
@@ -91,6 +92,9 @@ public final class CombatRoundV5 {
                 actors.stream().map(this::actorName).toList()));
 
         for (Object actor : actors) {
+            // Stop at the first terminal outcome. Remaining actors must not
+            // spend MP, attack or produce events after victory or defeat.
+            if (outcome() != CombatOutcome.ONGOING) break;
             if (actor instanceof PlayerRuntimeV5 player) {
                 if (!player.isAlive() || player.isAsleep()) continue;
                 PlayerOrder order = planned.get(player);
