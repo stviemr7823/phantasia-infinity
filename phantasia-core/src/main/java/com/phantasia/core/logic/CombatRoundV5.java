@@ -23,7 +23,7 @@ import java.util.Set;
  * while monsters temporarily retain their existing typed v4 wrapper.
  * This does not replace the production v4 CombatManager.
  *
- * ATTACK, RANGED_ATTACK, CAST and NONE are supported player orders.
+ * ATTACK, LUNGE, RANGED_ATTACK, CAST and NONE are supported player orders.
  * Monster AI is a simple attack against the first living party member.
  */
 public final class CombatRoundV5 {
@@ -33,13 +33,18 @@ public final class CombatRoundV5 {
         public PlayerOrder {
             Objects.requireNonNull(actor, "actor");
             Objects.requireNonNull(action, "action");
-            if (action != Action.ATTACK && action != Action.RANGED_ATTACK
+            if (action != Action.ATTACK && action != Action.LUNGE
+                    && action != Action.RANGED_ATTACK
                     && action != Action.CAST && action != Action.NONE)
                 throw new IllegalArgumentException("Unsupported v5 order: " + action);
         }
 
         public static PlayerOrder attack(PlayerRuntimeV5 actor, Monster target, CombatRank rank) {
             return new PlayerOrder(actor, Action.ATTACK, target, null, null, rank);
+        }
+        /** Front-rank lunge may reach the enemy's second (middle) rank. */
+        public static PlayerOrder lunge(PlayerRuntimeV5 actor, Monster target, CombatRank rank) {
+            return new PlayerOrder(actor, Action.LUNGE, target, null, null, rank);
         }
         public static PlayerOrder ranged(PlayerRuntimeV5 actor, Monster target) {
             return new PlayerOrder(actor, Action.RANGED_ATTACK, target, null, null, null);
@@ -127,6 +132,15 @@ public final class CombatRoundV5 {
         return enemyRank.position == frontmost;
     }
 
+    /** Lunge reaches normal melee targets, plus the middle enemy rank from front. */
+    public boolean canLungeReach(PlayerRuntimeV5 actor, Monster target) {
+        CombatRank own = rankOf(actor);
+        CombatRank enemy = enemyRankOf(target);
+        return canMeleeReach(actor, target)
+                || (actor.isAlive() && target.isAlive()
+                    && own == CombatRank.FRONT && enemy == CombatRank.MIDDLE);
+    }
+
     public CombatRank rankOf(PlayerRuntimeV5 member) {
         if (!containsIdentity(party, member))
             throw new IllegalArgumentException("Not a party member");
@@ -195,12 +209,14 @@ public final class CombatRoundV5 {
     }
 
     private void validateOrder(PlayerOrder order) {
-        if (order.action() == Action.ATTACK) {
+        if (order.action() == Action.ATTACK || order.action() == Action.LUNGE) {
             if (order.rank() == null || order.rank() != rankOf(order.actor())
                     || order.enemyTarget() == null
                     || !containsIdentity(enemies, order.enemyTarget())
                     || (order.actor().isAlive() && order.enemyTarget().isAlive()
-                            && !canMeleeReach(order.actor(), order.enemyTarget()))
+                            && !(order.action() == Action.LUNGE
+                                ? canLungeReach(order.actor(), order.enemyTarget())
+                                : canMeleeReach(order.actor(), order.enemyTarget())))
                     || order.allyTarget() != null || order.spell() != null)
                 throw new IllegalArgumentException("Invalid player attack order");
         } else if (order.action() == Action.RANGED_ATTACK) {
@@ -220,7 +236,8 @@ public final class CombatRoundV5 {
                             && (order.enemyTarget() == null
                             || !containsIdentity(enemies, order.enemyTarget())))
                             || (spell.getTargetType() == Spell.TargetType.ALL_ENEMIES
-                            && order.enemyTarget() != null))
+                            && order.enemyTarget() != null
+                            && !containsIdentity(enemies, order.enemyTarget())))
                         throw new IllegalArgumentException("Invalid enemy spell target");
                 }
                 case HEAL, AWAKEN -> {
@@ -260,7 +277,8 @@ public final class CombatRoundV5 {
     private void resolveAttack(PlayerOrder order, List<CombatEvent> events) {
         Monster target = order.enemyTarget();
         PlayerRuntimeV5 attacker = order.actor();
-        if (!target.isAlive() || !canMeleeReach(attacker, target)) return;
+        if (!target.isAlive() || !(order.action() == Action.LUNGE
+                ? canLungeReach(attacker, target) : canMeleeReach(attacker, target))) return;
         if (!FormulaEngine.playerRollToHit(attacker, target)) {
             events.add(new CombatEvent.Miss(attacker.name(), target.getName()));
             return;
@@ -347,8 +365,13 @@ public final class CombatRoundV5 {
     }
 
     private List<Monster> enemyTargets(PlayerOrder order) {
-        return order.spell().getTargetType() == Spell.TargetType.ALL_ENEMIES
-                ? enemies : List.of(order.enemyTarget());
+        if (order.spell().getTargetType() != Spell.TargetType.ALL_ENEMIES)
+            return List.of(order.enemyTarget());
+        // null selector = both/all occupied ranks; a selected enemy designates
+        // that entire rank, even if another enemy is ahead of it.
+        if (order.enemyTarget() == null) return enemies;
+        CombatRank selected = enemyRankOf(order.enemyTarget());
+        return enemies.stream().filter(m -> enemyRankOf(m) == selected).toList();
     }
 
     private List<PlayerRuntimeV5> allyTargets(PlayerOrder order) {
