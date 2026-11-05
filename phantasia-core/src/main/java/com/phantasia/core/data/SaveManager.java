@@ -76,8 +76,10 @@ public final class SaveManager {
     // -------------------------------------------------------------------------
 
     public static void save(GameSession session, String path) throws IOException {
+        int partySize = session.getParty().size();
+        if (partySize > PARTY_MAX)
+            throw new IOException("Cannot save " + partySize + " active characters (maximum " + PARTY_MAX + ")");
         DataPaths.ensureParentDirs(path);
-        int partySize = Math.min(session.getParty().size(), PARTY_MAX);
         int fileSize  = V4_FIXED_HEADER + partySize * V4_RECORD;
         byte[] buf    = new byte[fileSize];
 
@@ -111,12 +113,26 @@ public final class SaveManager {
 
     public static GameSession load(String path) throws IOException {
         byte[] buf = Files.readAllBytes(Path.of(path));
+        if (buf.length < OFF_VERSION + 2)
+            throw new SaveFormatException("Truncated save header: " + DataPaths.absolute(path));
 
         for (int i = 0; i < 4; i++)
             if (buf[OFF_MAGIC + i] != MAGIC[i])
                 throw new SaveFormatException("Not a Phantasia save: " + DataPaths.absolute(path));
 
         short version = readShort(buf, OFF_VERSION);
+        int minimumHeader = switch (version) {
+            case 1 -> V1_OFF_ROSTER;
+            case 2 -> V2_OFF_ROSTER;
+            case 3 -> V3_OFF_ROSTER;
+            case 4 -> V4_OFF_ROSTER;
+            default -> throw new SaveFormatException(
+                    "Unsupported version " + version + " (supported 1–4): "
+                            + DataPaths.absolute(path));
+        };
+        if (buf.length < minimumHeader)
+            throw new SaveFormatException("Truncated v" + version + " save header: "
+                    + DataPaths.absolute(path));
 
         int         partyGold = readInt(buf, OFF_PARTY_GOLD);
         int         bankGold  = readInt(buf, OFF_BANK_GOLD);
@@ -160,6 +176,11 @@ public final class SaveManager {
         int partySize = readShort(buf, offSize);
         if (partySize < 0 || partySize > PARTY_MAX)
             throw new SaveFormatException("Corrupt party size: " + partySize);
+
+        long expectedBytes = (long) offRoster + (long) partySize * recordSize;
+        if (buf.length != expectedBytes)
+            throw new SaveFormatException("Invalid v" + version + " save length: expected "
+                    + expectedBytes + " bytes, got " + buf.length);
 
         List<PlayerCharacter> party = new java.util.ArrayList<>(partySize);
         for (int i = 0; i < partySize; i++) {
