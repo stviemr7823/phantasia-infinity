@@ -4,6 +4,10 @@ package com.phantasia.core.logic;
 import com.phantasia.core.model.Entity;
 import com.phantasia.core.model.Monster;
 import com.phantasia.core.model.PlayerCharacter;
+import com.phantasia.core.model.PlayerRuntimeV5;
+import com.phantasia.core.model.PlayerStateV5.Attribute;
+import com.phantasia.core.model.CombatRank;
+import java.util.Objects;
 import com.phantasia.core.model.Stat;
 
 /**
@@ -78,6 +82,58 @@ public class FormulaEngine {
         int defDex = defender.getStat(Stat.DEXTERITY);
         int chance = Math.clamp(50 + (atkVal - defDex), 5, 95);
         return Dice.chance(chance);
+    }
+
+    // -------------------------------------------------------------------------
+    // Native v5 player formulas — parallel to the legacy combat path.
+    // These are deliberately not wired into CombatManager yet.
+    // -------------------------------------------------------------------------
+
+    /** Pure hit percentage for a v5 player attacking a legacy monster. */
+    public static int playerHitChance(PlayerRuntimeV5 attacker, Monster defender) {
+        Objects.requireNonNull(attacker, "attacker");
+        Objects.requireNonNull(defender, "defender");
+        int agility = attacker.attribute(Attribute.AGILITY);
+        return Math.clamp(50 + agility - monsterDefenseValue(defender), 5, 95);
+    }
+
+    /** Pure hit percentage for a monster attacking a v5 player. */
+    public static int monsterHitChance(Monster attacker, PlayerRuntimeV5 defender) {
+        Objects.requireNonNull(attacker, "attacker");
+        Objects.requireNonNull(defender, "defender");
+        int agility = defender.attribute(Attribute.AGILITY);
+        return Math.clamp(50 + monsterAttackValue(attacker) - agility, 5, 95);
+    }
+
+    /** Roll using the same centralized dice as the legacy hit resolver. */
+    public static boolean playerRollToHit(PlayerRuntimeV5 attacker, Monster defender) {
+        return Dice.chance(playerHitChance(attacker, defender));
+    }
+
+    public static boolean monsterRollToHit(Monster attacker, PlayerRuntimeV5 defender) {
+        return Dice.chance(monsterHitChance(attacker, defender));
+    }
+
+    /** V5 escape percentage: same established Agility-based calculation. */
+    public static int escapeChance(PlayerRuntimeV5 player) {
+        Objects.requireNonNull(player, "player");
+        return Math.clamp(30 + player.attribute(Attribute.AGILITY), 5, 85);
+    }
+
+    public static boolean rollEscape(PlayerRuntimeV5 player) {
+        return Dice.chance(escapeChance(player));
+    }
+
+    /**
+     * V5 player damage with an explicit tactical rank.
+     * The v5 runtime is not an Entity and does not own battle positioning.
+     */
+    public static int calculatePlayerDamage(PlayerRuntimeV5 player, CombatRank rank) {
+        Objects.requireNonNull(player, "player");
+        Objects.requireNonNull(rank, "rank");
+        int strength = Math.max(2, player.attribute(Attribute.STRENGTH));
+        int raw = Dice.nextInt(strength / 2) + (strength / 4) + 1;
+        return Math.min(Math.round(raw * rank.damageMod), DAMAGE_CAP);
     }
 
     public static int applyCritical(int baseDamage) {
