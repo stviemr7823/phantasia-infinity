@@ -47,11 +47,12 @@ public final class CombatRoundV5 {
     private final List<PlayerRuntimeV5> party;
     private final List<Monster> enemies;
     private final Map<PlayerRuntimeV5, CombatRank> ranks = new IdentityHashMap<>();
+    private final Map<Monster, CombatRank> enemyRanks = new IdentityHashMap<>();
     private int roundNumber;
 
     /** Compatibility constructor: all party members initially occupy the front rank. */
     public CombatRoundV5(List<PlayerRuntimeV5> party, List<Monster> enemies) {
-        this(party, enemies, Map.of());
+        this(party, enemies, Map.of(), Map.of());
     }
 
     /**
@@ -60,6 +61,16 @@ public final class CombatRoundV5 {
      */
     public CombatRoundV5(List<PlayerRuntimeV5> party, List<Monster> enemies,
                          Map<PlayerRuntimeV5, CombatRank> assignedRanks) {
+        this(party, enemies, assignedRanks, Map.of());
+    }
+
+    /**
+     * Both formations are fixed for this encounter. Unspecified ranks default
+     * to FRONT; enemy positions are not stored in legacy Monster records.
+     */
+    public CombatRoundV5(List<PlayerRuntimeV5> party, List<Monster> enemies,
+                         Map<PlayerRuntimeV5, CombatRank> assignedRanks,
+                         Map<Monster, CombatRank> assignedEnemyRanks) {
         this.party = List.copyOf(Objects.requireNonNull(party, "party"));
         this.enemies = List.copyOf(Objects.requireNonNull(enemies, "enemies"));
         requireUnique(this.party);
@@ -76,6 +87,35 @@ public final class CombatRoundV5 {
         }
         for (PlayerRuntimeV5 member : this.party)
             ranks.put(member, assignedRanks.getOrDefault(member, CombatRank.FRONT));
+        Objects.requireNonNull(assignedEnemyRanks, "assignedEnemyRanks");
+        for (Map.Entry<Monster, CombatRank> entry : assignedEnemyRanks.entrySet()) {
+            if (!containsIdentity(this.enemies, entry.getKey()))
+                throw new IllegalArgumentException("Rank assignment for non-enemy");
+            Objects.requireNonNull(entry.getValue(), "enemy rank");
+        }
+        for (Monster enemy : this.enemies)
+            enemyRanks.put(enemy, assignedEnemyRanks.getOrDefault(enemy, CombatRank.FRONT));
+    }
+
+    public CombatRank enemyRankOf(Monster enemy) {
+        if (!containsIdentity(enemies, enemy))
+            throw new IllegalArgumentException("Not an encounter enemy");
+        return enemyRanks.get(enemy);
+    }
+
+    /**
+     * Only an exposed enemy rank can be targeted with basic melee.
+     * Back-rank melee is not supported yet; ranged attacks come later.
+     */
+    public boolean canMeleeReach(PlayerRuntimeV5 actor, Monster target) {
+        CombatRank ownRank = rankOf(actor);
+        CombatRank enemyRank = enemyRankOf(target);
+        if (!target.isAlive() || !actor.isAlive() || ownRank == CombatRank.BACK)
+            return false;
+        int frontmost = enemies.stream().filter(Monster::isAlive)
+                .mapToInt(m -> enemyRankOf(m).position)
+                .min().orElse(Integer.MAX_VALUE);
+        return enemyRank.position == frontmost;
     }
 
     public CombatRank rankOf(PlayerRuntimeV5 member) {
@@ -149,6 +189,8 @@ public final class CombatRoundV5 {
             if (order.rank() == null || order.rank() != rankOf(order.actor())
                     || order.enemyTarget() == null
                     || !containsIdentity(enemies, order.enemyTarget())
+                    || (order.actor().isAlive() && order.enemyTarget().isAlive()
+                            && !canMeleeReach(order.actor(), order.enemyTarget()))
                     || order.allyTarget() != null || order.spell() != null)
                 throw new IllegalArgumentException("Invalid player attack order");
         } else if (order.action() == Action.CAST) {
@@ -203,7 +245,7 @@ public final class CombatRoundV5 {
     private void resolveAttack(PlayerOrder order, List<CombatEvent> events) {
         Monster target = order.enemyTarget();
         PlayerRuntimeV5 attacker = order.actor();
-        if (!target.isAlive()) return;
+        if (!target.isAlive() || !canMeleeReach(attacker, target)) return;
         if (!FormulaEngine.playerRollToHit(attacker, target)) {
             events.add(new CombatEvent.Miss(attacker.name(), target.getName()));
             return;
