@@ -343,6 +343,8 @@ public final class CombatRoundV5 {
                     "No valid target or insufficient MP", 0, false));
             return;
         }
+        for (String missedTarget : result.missedTargets())
+            events.add(new CombatEvent.Miss(caster.name(), missedTarget));
         for (SpellCastingV5.Impact impact : result.impacts()) {
             if (spell.getEffectType() == Spell.EffectType.SLEEP
                     || spell.getEffectType() == Spell.EffectType.AWAKEN) {
@@ -353,7 +355,7 @@ public final class CombatRoundV5 {
                         impact.target(), impact.damage(), true));
             }
         }
-        if (result.impacts().isEmpty())
+        if (result.impacts().isEmpty() && result.missedTargets().isEmpty())
             events.add(new CombatEvent.SpellCast(caster.name(), spell.getName(),
                     "No effect", 0, true));
         if (spell.getEffectType() == Spell.EffectType.DAMAGE) {
