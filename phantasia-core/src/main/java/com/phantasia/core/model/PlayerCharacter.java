@@ -21,8 +21,7 @@ public class PlayerCharacter extends Entity
     {
         super(core.getName());
         this.core = core;
-        // Ensure entity is alive on creation
-        core.setStat(DataLayout.BODY_STATUS, 1);
+        // HP determines player life state. BODY_STATUS overlaps the legacy XP field.
     }
 
     /**
@@ -45,7 +44,6 @@ public class PlayerCharacter extends Entity
         record.setStat(DataLayout.PC_LUCK, luck);
         record.setStat(DataLayout.PC_JOB, job.getBitValue());
         record.setStat(DataLayout.PC_LEVEL, level);
-        record.setStat(DataLayout.BODY_STATUS, 1);
         return new PlayerCharacter(record);
     }
 
