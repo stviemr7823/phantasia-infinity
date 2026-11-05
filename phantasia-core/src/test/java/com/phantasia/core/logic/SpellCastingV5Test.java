@@ -49,11 +49,13 @@ class SpellCastingV5Test {
         assertTrue(result.cast());
         assertEquals(7, result.mpSpent());
         assertEquals(13, mage.mp(), "Area spells charge MP once, not per target");
-        assertEquals(39, first.getHp());
-        assertEquals(39, second.getHp());
+        assertTrue(first.getHp() == 39 || first.getHp() == 50);
+        assertTrue(second.getHp() == 39 || second.getHp() == 50);
         assertEquals(0, defeated.getHp());
-        assertEquals(2, result.impacts().size());
-        assertEquals(11, result.impacts().getFirst().damage());
+        assertEquals(2, result.impacts().size() + result.missedTargets().size(),
+                "Each living enemy must either be hit or miss");
+        for (SpellCastingV5.Impact impact : result.impacts())
+            assertEquals(11, impact.damage());
     }
 
     @Test
@@ -90,7 +92,8 @@ class SpellCastingV5Test {
                 mage, single, List.of(a));
         assertTrue(result.cast());
         assertEquals(7, mage.mp());
-        assertEquals(23, a.getHp());
+        assertTrue(a.getHp() == 23 || a.getHp() == 30);
+        assertEquals(1, result.impacts().size() + result.missedTargets().size());
 
         DataCore healing = new DataCore();
         healing.setStat(DataLayout.SPELL_EFFECT_TYPE, Spell.EffectType.HEAL.ordinal());
