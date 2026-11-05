@@ -119,7 +119,7 @@ public final class CombatRoundV5 {
 
     /**
      * Only an exposed enemy rank can be targeted with basic melee.
-     * Back-rank melee is not supported yet; ranged attacks come later.
+     * A front-rank LUNGE may instead reach the middle enemy rank.
      */
     public boolean canMeleeReach(PlayerRuntimeV5 actor, Monster target) {
         CombatRank ownRank = rankOf(actor);
@@ -307,7 +307,7 @@ public final class CombatRoundV5 {
 
     /**
      * Initial ranged formula: bow attack and enchantment plus a modest Agility
-     * bonus and d4 variance. Ammo tracking is intentionally not implemented.
+     * bonus and d4 variance. Equipped bows have unlimited shots by design.
      */
     private void resolveRanged(PlayerOrder order, List<CombatEvent> events) {
         PlayerRuntimeV5 attacker = order.actor();
