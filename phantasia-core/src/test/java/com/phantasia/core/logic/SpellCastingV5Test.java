@@ -103,6 +103,35 @@ class SpellCastingV5Test {
     }
 
     @Test
+    void defeatedSelectedEnemyDoesNotCrashOrSpendMp() {
+        PlayerRuntimeV5 mage = caster(10, 8);
+        Monster defeated = monster("Defeated", 0);
+        Spell single = damageSpell(4, 9, Spell.TargetType.SINGLE_ENEMY);
+
+        SpellCastingV5.Result result = SpellCastingV5.castDamage(
+                mage, single, List.of(defeated));
+
+        assertFalse(result.cast());
+        assertEquals(0, result.mpSpent());
+        assertTrue(result.impacts().isEmpty());
+        assertTrue(result.missedTargets().isEmpty());
+        assertEquals(10, mage.mp());
+        assertEquals(0, defeated.getHp());
+    }
+
+    @Test
+    void duplicateTargetsAreRejectedBeforeAnyMpIsSpent() {
+        PlayerRuntimeV5 mage = caster(10, 8);
+        Monster enemy = monster("Enemy", 50);
+        Spell area = damageSpell(4, 9, Spell.TargetType.ALL_ENEMIES);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> SpellCastingV5.castDamage(mage, area, List.of(enemy, enemy)));
+        assertEquals(10, mage.mp());
+        assertEquals(50, enemy.getHp());
+    }
+
+    @Test
     void mindVarianceAndDamageCapAreBounded() {
         assertEquals(11, SpellCastingV5.magicDamage(0, 11));
         for (int i = 0; i < 100; i++) {
