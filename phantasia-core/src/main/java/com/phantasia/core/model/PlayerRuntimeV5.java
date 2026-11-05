@@ -26,6 +26,20 @@ public final class PlayerRuntimeV5 {
     public long experience() { return state.experience(); }
     public boolean isAlive() { return hp() > 0; }
 
+    /** Bit 0 of the v5 player status byte denotes sleep. Other bits are preserved. */
+    public static final int STATUS_ASLEEP = 0x01;
+
+    public boolean isAsleep() {
+        return (state.statusFlags() & STATUS_ASLEEP) != 0;
+    }
+
+    public void setAsleep(boolean asleep) {
+        int flags = state.statusFlags();
+        state.setStatusFlags(asleep
+                ? flags | STATUS_ASLEEP
+                : flags & ~STATUS_ASLEEP);
+    }
+
     /** A detached copy: callers cannot change this runtime's record. */
     public PlayerStateV5 snapshot() { return PlayerStateV5.fromBytes(state.toBytes()); }
 
