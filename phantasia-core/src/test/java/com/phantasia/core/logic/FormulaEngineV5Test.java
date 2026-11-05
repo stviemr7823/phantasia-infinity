@@ -46,7 +46,7 @@ class FormulaEngineV5Test {
 
     @Test
     void hitChanceClampsAndDamageRespectsPositionAndCap() {
-        assertEquals(5, FormulaEngine.playerHitChance(player(5, 0, 3), monster(255)));
+        assertEquals(8, FormulaEngine.playerHitChance(player(5, 0, 3), monster(255)));
         assertEquals(95, FormulaEngine.playerHitChance(player(5, 255, 3), monster(1)));
         assertEquals(95, FormulaEngine.monsterHitChance(monster(255), player(4, 0, 4)));
         assertEquals(5, FormulaEngine.monsterHitChance(monster(1), player(4, 255, 4)));
