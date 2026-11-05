@@ -1,7 +1,6 @@
 package com.phantasia.core.data;
 
 import com.phantasia.core.data.DataPaths;
-import com.phantasia.core.model.DataCore;
 import com.phantasia.core.model.DataLayout;
 import com.phantasia.core.model.PlayerCharacter;
 import java.io.RandomAccessFile;
@@ -90,8 +89,7 @@ public class GlobalLedger {
             raf.readFully(rawSoul);
 
             // 3. Reconstruct the DataCore and Character object
-            DataCore core = new DataCore(rawSoul);
-            return new PlayerCharacter(core);
+            return PlayerCharacter.fromLegacyRecordBytes(rawSoul);
         }
     }
     // --- Getters and Setters ---

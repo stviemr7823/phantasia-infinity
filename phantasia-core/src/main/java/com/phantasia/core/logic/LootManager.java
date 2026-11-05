@@ -2,7 +2,6 @@
 package com.phantasia.core.logic;
 
 import com.phantasia.core.data.PartyLedger;
-import com.phantasia.core.model.DataLayout;
 import com.phantasia.core.model.Monster;
 import com.phantasia.core.model.PlayerCharacter;
 import com.phantasia.core.model.item.Inventory;
@@ -70,14 +69,14 @@ public class LootManager {
             }
 
             // --- Item 1 ---
-            int item1Id = m.getDataCore().getStat(DataLayout.MON_ITEM_1);
+            int item1Id = m.getItem1();
             if (item1Id > 0 && ItemTable.exists(item1Id)) {
                 String line = distributeItem(item1Id);
                 (line.contains("(no room)") ? overflowLines : itemLines).add(line);
             }
 
             // --- Item 2 ---
-            int item2Id = m.getDataCore().getStat(DataLayout.MON_ITEM_2);
+            int item2Id = m.getItem2();
             if (item2Id > 0 && ItemTable.exists(item2Id) && item2Id != item1Id) {
                 String line = distributeItem(item2Id);
                 (line.contains("(no room)") ? overflowLines : itemLines).add(line);
