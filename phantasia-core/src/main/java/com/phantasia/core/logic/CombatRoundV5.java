@@ -5,6 +5,11 @@ import com.phantasia.core.model.CombatRank;
 import com.phantasia.core.model.Monster;
 import com.phantasia.core.model.PlayerRuntimeV5;
 import com.phantasia.core.model.Spell;
+import com.phantasia.core.model.PlayerStateV5.Attribute;
+import com.phantasia.core.model.item.EquipSlot;
+import com.phantasia.core.model.item.ItemDefinition;
+import com.phantasia.core.model.item.ItemTable;
+import com.phantasia.core.model.item.ItemCategory;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -18,7 +23,7 @@ import java.util.Set;
  * while monsters temporarily retain their existing typed v4 wrapper.
  * This does not replace the production v4 CombatManager.
  *
- * Only ATTACK, CAST and NONE are currently supported for player orders.
+ * ATTACK, RANGED_ATTACK, CAST and NONE are supported player orders.
  * Monster AI is a simple attack against the first living party member.
  */
 public final class CombatRoundV5 {
@@ -28,12 +33,16 @@ public final class CombatRoundV5 {
         public PlayerOrder {
             Objects.requireNonNull(actor, "actor");
             Objects.requireNonNull(action, "action");
-            if (action != Action.ATTACK && action != Action.CAST && action != Action.NONE)
+            if (action != Action.ATTACK && action != Action.RANGED_ATTACK
+                    && action != Action.CAST && action != Action.NONE)
                 throw new IllegalArgumentException("Unsupported v5 order: " + action);
         }
 
         public static PlayerOrder attack(PlayerRuntimeV5 actor, Monster target, CombatRank rank) {
             return new PlayerOrder(actor, Action.ATTACK, target, null, null, rank);
+        }
+        public static PlayerOrder ranged(PlayerRuntimeV5 actor, Monster target) {
+            return new PlayerOrder(actor, Action.RANGED_ATTACK, target, null, null, null);
         }
         public static PlayerOrder cast(PlayerRuntimeV5 actor, Spell spell,
                                        Monster enemy, PlayerRuntimeV5 ally) {
@@ -165,6 +174,7 @@ public final class CombatRoundV5 {
                 PlayerOrder order = planned.get(player);
                 if (order == null || order.action() == Action.NONE) continue;
                 if (order.action() == Action.CAST) resolveCast(order, events);
+                else if (order.action() == Action.RANGED_ATTACK) resolveRanged(order, events);
                 else resolveAttack(order, events);
             } else if (actor instanceof Monster monster) {
                 if (!monster.isAlive() || monster.isAsleep()) continue;
@@ -193,6 +203,11 @@ public final class CombatRoundV5 {
                             && !canMeleeReach(order.actor(), order.enemyTarget()))
                     || order.allyTarget() != null || order.spell() != null)
                 throw new IllegalArgumentException("Invalid player attack order");
+        } else if (order.action() == Action.RANGED_ATTACK) {
+            if (order.enemyTarget() == null || !containsIdentity(enemies, order.enemyTarget())
+                    || order.allyTarget() != null || order.spell() != null
+                    || order.rank() != null || !hasBow(order.actor()))
+                throw new IllegalArgumentException("Ranged attack requires an equipped bow and encounter enemy");
         } else if (order.action() == Action.CAST) {
             Spell spell = Objects.requireNonNull(order.spell(), "spell");
             switch (spell.getEffectType()) {
@@ -255,6 +270,43 @@ public final class CombatRoundV5 {
         if (critical) damage = FormulaEngine.applyCritical(damage);
         target.applyDamage(damage);
         events.add(new CombatEvent.Hit(attacker.name(), target.getName(), damage, "Body", critical));
+        if (!target.isAlive()) events.add(new CombatEvent.Death(target.getName(), false));
+    }
+
+    /** A bow can reach any living enemy rank, including from the back line. */
+    public boolean canRangedReach(PlayerRuntimeV5 actor, Monster target) {
+        rankOf(actor);
+        enemyRankOf(target);
+        return actor.isAlive() && target.isAlive() && hasBow(actor);
+    }
+
+    private boolean hasBow(PlayerRuntimeV5 actor) {
+        int id = actor.equippedItemId(EquipSlot.BOW);
+        if (id == 0) return false;
+        ItemDefinition item = ItemTable.get(id);
+        return item.category() == ItemCategory.BOW;
+    }
+
+    /**
+     * Initial ranged formula: bow attack and enchantment plus a modest Agility
+     * bonus and d4 variance. Ammo tracking is intentionally not implemented.
+     */
+    private void resolveRanged(PlayerOrder order, List<CombatEvent> events) {
+        PlayerRuntimeV5 attacker = order.actor();
+        Monster target = order.enemyTarget();
+        if (!canRangedReach(attacker, target)) return;
+        if (!FormulaEngine.playerRollToHit(attacker, target)) {
+            events.add(new CombatEvent.Miss(attacker.name(), target.getName()));
+            return;
+        }
+        ItemDefinition bow = ItemTable.get(attacker.equippedItemId(EquipSlot.BOW));
+        int damage = Math.min(99, Math.max(1, bow.attack() + bow.enchant()
+                + attacker.attribute(Attribute.AGILITY) / 4 + Dice.d4()));
+        boolean critical = FormulaEngine.rollCritical();
+        if (critical) damage = FormulaEngine.applyCritical(damage);
+        target.applyDamage(damage);
+        events.add(new CombatEvent.Hit(attacker.name(), target.getName(), damage,
+                "Body", critical));
         if (!target.isAlive()) events.add(new CombatEvent.Death(target.getName(), false));
     }
 
