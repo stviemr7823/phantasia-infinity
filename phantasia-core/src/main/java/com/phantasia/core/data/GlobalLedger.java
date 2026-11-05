@@ -5,6 +5,8 @@ import com.phantasia.core.model.PlayerCharacter;
 import java.io.RandomAccessFile;
 import java.io.IOException;
 import java.io.File;
+import java.nio.file.Path;
+import java.util.Objects;
 
 /**
  * GlobalLedger: The Persistence Engine.
@@ -14,8 +16,7 @@ import java.io.File;
  * data layer and respects the -Dphantasia.data.dir override.
  */
 public class GlobalLedger {
-    private static final String FILE_PATH =
-            DataPaths.DAT_DIR + "/GAME.DAT";
+    private final Path filePath;
 
     // File Offsets based on architectural specs
     private static final int GOLD_OFFSET  = 0x00;   // 4-byte integer for Party Gold
@@ -26,6 +27,12 @@ public class GlobalLedger {
     private int bankGold;
 
     public GlobalLedger() {
+        this(Path.of(DataPaths.DAT_DIR, "GAME.DAT"));
+    }
+
+    /** Explicit file path permits isolated storage tests without touching game data. */
+    public GlobalLedger(Path filePath) {
+        this.filePath = Objects.requireNonNull(filePath, "filePath");
         loadGlobalData();
     }
 
@@ -35,15 +42,15 @@ public class GlobalLedger {
      */
     public void saveCharacter(int slot, PlayerCharacter pc) throws IOException {
         if (slot < 0 || slot > 5) throw new IllegalArgumentException("Invalid Roster Slot");
-        java.util.Objects.requireNonNull(pc, "pc");
+        Objects.requireNonNull(pc, "pc");
 
         byte[] record = pc.toLegacyRecordBytes();
         if (record.length != DataLayout.RECORD_SIZE) {
             throw new IOException("Unexpected legacy player record size: " + record.length);
         }
 
-        DataPaths.ensureParentDirs(FILE_PATH);
-        try (RandomAccessFile raf = new RandomAccessFile(FILE_PATH, "rw")) {
+        DataPaths.ensureParentDirs(filePath.toString());
+        try (RandomAccessFile raf = new RandomAccessFile(filePath.toFile(), "rw")) {
             raf.seek(ROSTER_START + (slot * DataLayout.RECORD_SIZE));
             raf.write(record);
         }
@@ -53,8 +60,8 @@ public class GlobalLedger {
      * Updates the shared Party Gold in the global save file.
      */
     public void saveGold() throws IOException {
-        DataPaths.ensureParentDirs(FILE_PATH);
-        try (RandomAccessFile raf = new RandomAccessFile(FILE_PATH, "rw")) {
+        DataPaths.ensureParentDirs(filePath.toString());
+        try (RandomAccessFile raf = new RandomAccessFile(filePath.toFile(), "rw")) {
             raf.seek(GOLD_OFFSET);
             raf.writeInt(partyGold); // 4-byte write
             raf.seek(BANK_OFFSET);
@@ -63,28 +70,28 @@ public class GlobalLedger {
     }
 
     private void loadGlobalData() {
-        File file = new File(FILE_PATH);
+        File file = filePath.toFile();
         if (!file.exists()) {
             this.partyGold = 400; // Starting gold for new journey
             this.bankGold  = 0;
             return;
         }
 
-        try (RandomAccessFile raf = new RandomAccessFile(FILE_PATH, "r")) {
+        try (RandomAccessFile raf = new RandomAccessFile(filePath.toFile(), "r")) {
             raf.seek(GOLD_OFFSET);
             this.partyGold = raf.readInt();
             raf.seek(BANK_OFFSET);
             this.bankGold  = raf.readInt();
         } catch (IOException e) {
             System.err.println("Ledger Read Error: Falling back to defaults. ("
-                    + DataPaths.absolute(FILE_PATH) + ")");
+                    + filePath.toAbsolutePath().toString() + ")");
         }
     }
 
     public PlayerCharacter loadCharacter(int slot) throws IOException {
         if (slot < 0 || slot > 5) throw new IllegalArgumentException("Invalid Roster Slot");
 
-        try (RandomAccessFile raf = new RandomAccessFile(FILE_PATH, "r")) {
+        try (RandomAccessFile raf = new RandomAccessFile(filePath.toFile(), "r")) {
             // 1. Seek to the start of the 64-byte slot
             raf.seek(ROSTER_START + (slot * DataLayout.RECORD_SIZE));
 
@@ -92,7 +99,7 @@ public class GlobalLedger {
             byte[] rawSoul = new byte[DataLayout.RECORD_SIZE];
             raf.readFully(rawSoul);
 
-            // 3. Reconstruct the DataCore and Character object
+            // 3. Import the character through its defensive-copy gateway
             return PlayerCharacter.fromLegacyRecordBytes(rawSoul);
         }
     }
