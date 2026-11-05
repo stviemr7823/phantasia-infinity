@@ -9,7 +9,8 @@ public class Monster extends Entity {
         this.core = core;
     }
 
-    @Override public DataCore getDataCore() { return core; }
+    /** Legacy monster record accessor; kept until C6 migration. */
+    public DataCore getDataCore() { return core; }
 
     @Override
     public int getHp()       { return core.getStat(DataLayout.MON_HP); }
