@@ -85,9 +85,6 @@ public final class EncounterFactory {
      * Builds a single PlayerCharacter with job-appropriate stats.
      */
     public static PlayerCharacter buildCharacter(String name, Job job) {
-        DataCore core = new DataCore(new byte[DataLayout.RECORD_SIZE]);
-        core.setName(name);
-
         int hp, mp, str, intel, dex, luck, level;
 
         switch (job) {
@@ -133,19 +130,8 @@ public final class EncounterFactory {
             }
         }
 
-        core.setShort(DataLayout.PC_HP,          hp);
-        core.setShort(DataLayout.PC_MAX_HP,       hp);
-        core.setShort(DataLayout.PC_MAGIC_POWER,  mp);
-        core.setShort(DataLayout.PC_MAX_MAGIC,    mp);
-        core.setStat (DataLayout.PC_STRENGTH,     str);
-        core.setStat (DataLayout.PC_INTELLIGENCE, intel);
-        core.setStat (DataLayout.PC_DEXTERITY,    dex);
-        core.setStat (DataLayout.PC_LUCK,         luck);
-        core.setStat (DataLayout.PC_JOB,          job.getBitValue());
-        core.setStat (DataLayout.PC_LEVEL,        level);
-        core.setStat (DataLayout.BODY_STATUS,     1);
-
-        return new PlayerCharacter(core);
+        return PlayerCharacter.fromLegacyCreation(
+                name, job, hp, mp, str, intel, dex, luck, level);
     }
 
     // =========================================================================

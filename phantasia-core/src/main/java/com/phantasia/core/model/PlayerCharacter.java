@@ -26,6 +26,30 @@ public class PlayerCharacter extends Entity
         core.setStat(DataLayout.BODY_STATUS, 1);
     }
 
+    /**
+     * Legacy v4 creation gateway: callers provide values, never byte offsets.
+     * This deliberately preserves the existing v4 layout and initial values;
+     * replacing its backing store is part of C5e, not C5a.
+     */
+    public static PlayerCharacter fromLegacyCreation(
+            String name, Job job, int hp, int mp, int strength,
+            int intelligence, int dexterity, int luck, int level) {
+        DataCore record = new DataCore(new byte[DataLayout.RECORD_SIZE]);
+        record.setName(name);
+        record.setShort(DataLayout.PC_HP, hp);
+        record.setShort(DataLayout.PC_MAX_HP, hp);
+        record.setShort(DataLayout.PC_MAGIC_POWER, mp);
+        record.setShort(DataLayout.PC_MAX_MAGIC, mp);
+        record.setStat(DataLayout.PC_STRENGTH, strength);
+        record.setStat(DataLayout.PC_INTELLIGENCE, intelligence);
+        record.setStat(DataLayout.PC_DEXTERITY, dexterity);
+        record.setStat(DataLayout.PC_LUCK, luck);
+        record.setStat(DataLayout.PC_JOB, job.getBitValue());
+        record.setStat(DataLayout.PC_LEVEL, level);
+        record.setStat(DataLayout.BODY_STATUS, 1);
+        return new PlayerCharacter(record);
+    }
+
     // -------------------------------------------------------------------------
     // Stats — with undead stat-lock enforcement
     // -------------------------------------------------------------------------
