@@ -47,13 +47,18 @@ class CombatRoundV5Test {
 
         assertEquals(1, result.roundNumber());
         assertTrue(result.events().getFirst() instanceof CombatEvent.RoundHeader);
-        assertEquals(CombatOutcome.VICTORY, result.outcome());
         assertEquals(23, caster.mp());
-        assertEquals(0, a.getHp());
-        assertEquals(0, b.getHp());
-        assertEquals(2, result.events().stream()
-                .filter(e -> e instanceof CombatEvent.SpellCast).count());
-        assertEquals(2, result.events().stream()
+        long hits = result.events().stream()
+                .filter(e -> e instanceof CombatEvent.SpellCast).count();
+        long misses = result.events().stream()
+                .filter(e -> e instanceof CombatEvent.Miss miss
+                        && miss.attackerName().equals("Sage")).count();
+        assertEquals(2, hits + misses, "Both monsters resolve independently");
+        assertTrue(a.getHp() == 0 || a.getHp() == 15);
+        assertTrue(b.getHp() == 0 || b.getHp() == 15);
+        assertEquals(a.getHp() == 0 && b.getHp() == 0
+                ? CombatOutcome.VICTORY : CombatOutcome.ONGOING, result.outcome());
+        assertEquals(hits, result.events().stream()
                 .filter(e -> e instanceof CombatEvent.Death d && !d.wasPartyMember()).count());
     }
 
@@ -61,9 +66,10 @@ class CombatRoundV5Test {
     void invalidOrdersRejectBeforeRoundChangesAndNoSpellIsCharged() {
         PlayerRuntimeV5 caster = player("Sage", 60, 10);
         Monster monster = monster("Orc", 25);
+        Monster outsider = monster("Outsider", 25);
         CombatRoundV5 round = new CombatRoundV5(List.of(caster), List.of(monster));
         assertThrows(IllegalArgumentException.class, () -> round.runRound(List.of(
-                CombatRoundV5.PlayerOrder.cast(caster, areaDamage(3, 10), monster, null))));
+                CombatRoundV5.PlayerOrder.cast(caster, areaDamage(3, 10), outsider, null))));
         assertEquals(10, caster.mp());
         assertEquals(25, monster.getHp());
         assertThrows(IllegalArgumentException.class, () -> round.runRound(List.of(
@@ -95,20 +101,24 @@ class CombatRoundV5Test {
 
     @Test
     void victoryClosesCombatAndRejectsFurtherRoundsWithoutSpendingMp() {
-        PlayerRuntimeV5 caster = player("Sage", 400, 20);
+        PlayerRuntimeV5 caster = player("Sage", 400, 200);
         Monster enemy = monster("Orc", 5);
         CombatRoundV5 combat = new CombatRoundV5(List.of(caster), List.of(enemy));
 
-        RoundResult victory = combat.runRound(List.of(
-                CombatRoundV5.PlayerOrder.cast(caster, areaDamage(4, 20), null, null)));
-        assertEquals(CombatOutcome.VICTORY, victory.outcome());
-        assertEquals(16, caster.mp());
+        // A damaging spell can legitimately miss. Repeat until victory,
+        // never assuming a random hit on any particular round.
+        for (int i = 0; i < 20 && combat.outcome() == CombatOutcome.ONGOING; i++)
+            combat.runRound(List.of(CombatRoundV5.PlayerOrder.cast(
+                    caster, areaDamage(4, 20), null, null)));
+        assertEquals(CombatOutcome.VICTORY, combat.outcome());
+        int remainingMp = caster.mp();
+        assertTrue(remainingMp < 200);
         assertEquals(0, enemy.getHp());
 
         assertThrows(IllegalStateException.class,
                 () -> combat.runRound(List.of(CombatRoundV5.PlayerOrder.cast(
                         caster, areaDamage(4, 20), null, null))));
-        assertEquals(16, caster.mp(), "A completed encounter must not spend MP again");
+        assertEquals(remainingMp, caster.mp(), "A completed encounter must not spend MP again");
         assertEquals(CombatOutcome.VICTORY, combat.outcome());
     }
 
