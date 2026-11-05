@@ -50,6 +50,23 @@ public class PlayerCharacter extends Entity
         return new PlayerCharacter(record);
     }
 
+    /**
+     * C5a legacy v4 persistence gateway. Validates the record boundary and
+     * copies input bytes so a save buffer cannot become mutable player state.
+     * This is not a v4-to-v5 converter.
+     */
+    public static PlayerCharacter fromLegacyRecordBytes(byte[] bytes) {
+        if (bytes == null || bytes.length != DataLayout.RECORD_SIZE) {
+            throw new IllegalArgumentException("Expected 64-byte v4 player record");
+        }
+        return new PlayerCharacter(new DataCore(bytes.clone()));
+    }
+
+    /** Copy of this character's legacy v4 record for SaveManager only. */
+    public byte[] toLegacyRecordBytes() {
+        return core.getRawBytes().clone();
+    }
+
     // -------------------------------------------------------------------------
     // Stats — with undead stat-lock enforcement
     // -------------------------------------------------------------------------

@@ -96,7 +96,7 @@ public final class SaveManager {
 
         writeShort(buf, V4_OFF_PARTY_SIZE, partySize);
         for (int i = 0; i < partySize; i++) {
-            byte[] rec = session.getParty().get(i).getDataCore().getRawBytes();
+            byte[] rec = session.getParty().get(i).toLegacyRecordBytes();
             System.arraycopy(rec, 0, buf, V4_OFF_ROSTER + i * V4_RECORD, V4_RECORD);
         }
 
@@ -167,7 +167,7 @@ public final class SaveManager {
             int copyLen  = Math.min(recordSize, DataLayout.RECORD_SIZE);
             System.arraycopy(buf, offRoster + i * recordSize, rec64, 0, copyLen);
             // Bytes copyLen–63 remain 0 — correct default for expansion zone.
-            party.add(new PlayerCharacter(new DataCore(rec64)));
+            party.add(PlayerCharacter.fromLegacyRecordBytes(rec64));
         }
 
         System.out.printf("[SaveManager] Loaded %d chars from %s (v%d→v4).%n",
