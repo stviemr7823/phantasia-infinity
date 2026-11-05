@@ -14,6 +14,9 @@ public enum Action {
     AIM_BLOW,    // High damage/accuracy, slow speed
     PARRY,       // Defensive stance, boosts AC for the turn
 
+    // Ranged combat
+    RANGED_ATTACK, // Bow attack; separate reach and damage rules
+
     // Magic & Misc
     CAST,        // Triggers the SpellFactory/MagicBridge
     RUN,         // Escape attempt based on Speed/Dexterity
