@@ -46,9 +46,20 @@ public final class CombatRoundV5 {
 
     private final List<PlayerRuntimeV5> party;
     private final List<Monster> enemies;
+    private final Map<PlayerRuntimeV5, CombatRank> ranks = new IdentityHashMap<>();
     private int roundNumber;
 
+    /** Compatibility constructor: all party members initially occupy the front rank. */
     public CombatRoundV5(List<PlayerRuntimeV5> party, List<Monster> enemies) {
+        this(party, enemies, Map.of());
+    }
+
+    /**
+     * Pre-battle rank assignment. Missing entries default to FRONT.
+     * Unexpected party members and null ranks are rejected.
+     */
+    public CombatRoundV5(List<PlayerRuntimeV5> party, List<Monster> enemies,
+                         Map<PlayerRuntimeV5, CombatRank> assignedRanks) {
         this.party = List.copyOf(Objects.requireNonNull(party, "party"));
         this.enemies = List.copyOf(Objects.requireNonNull(enemies, "enemies"));
         requireUnique(this.party);
@@ -57,6 +68,20 @@ public final class CombatRoundV5 {
             throw new IllegalArgumentException("V5 combat requires one to six party members");
         if (this.enemies.isEmpty())
             throw new IllegalArgumentException("V5 combat requires enemies");
+        Objects.requireNonNull(assignedRanks, "assignedRanks");
+        for (Map.Entry<PlayerRuntimeV5, CombatRank> entry : assignedRanks.entrySet()) {
+            if (!containsIdentity(this.party, entry.getKey()))
+                throw new IllegalArgumentException("Rank assignment for non-party member");
+            Objects.requireNonNull(entry.getValue(), "rank");
+        }
+        for (PlayerRuntimeV5 member : this.party)
+            ranks.put(member, assignedRanks.getOrDefault(member, CombatRank.FRONT));
+    }
+
+    public CombatRank rankOf(PlayerRuntimeV5 member) {
+        if (!containsIdentity(party, member))
+            throw new IllegalArgumentException("Not a party member");
+        return ranks.get(member);
     }
 
     private static <T> void requireUnique(List<T> elements) {
@@ -103,8 +128,7 @@ public final class CombatRoundV5 {
                 else resolveAttack(order, events);
             } else if (actor instanceof Monster monster) {
                 if (!monster.isAlive() || monster.isAsleep()) continue;
-                PlayerRuntimeV5 defender = party.stream()
-                        .filter(PlayerRuntimeV5::isAlive).findFirst().orElse(null);
+                PlayerRuntimeV5 defender = preferredMonsterTarget();
                 if (defender == null) continue;
                 if (!FormulaEngine.monsterRollToHit(monster, defender)) {
                     events.add(new CombatEvent.Miss(monster.getName(), defender.name()));
@@ -122,7 +146,8 @@ public final class CombatRoundV5 {
 
     private void validateOrder(PlayerOrder order) {
         if (order.action() == Action.ATTACK) {
-            if (order.rank() == null || order.enemyTarget() == null
+            if (order.rank() == null || order.rank() != rankOf(order.actor())
+                    || order.enemyTarget() == null
                     || !containsIdentity(enemies, order.enemyTarget())
                     || order.allyTarget() != null || order.spell() != null)
                 throw new IllegalArgumentException("Invalid player attack order");
@@ -159,6 +184,20 @@ public final class CombatRoundV5 {
         } else if (order.enemyTarget() != null || order.allyTarget() != null || order.spell() != null) {
             throw new IllegalArgumentException("Idle order has unexpected target or spell");
         }
+    }
+
+    /**
+     * Monster AI attacks the nearest occupied rank; within a rank, original
+     * party order is a stable tie-breaker. No random targeting policy yet.
+     */
+    private PlayerRuntimeV5 preferredMonsterTarget() {
+        PlayerRuntimeV5 selected = null;
+        for (PlayerRuntimeV5 member : party) {
+            if (!member.isAlive()) continue;
+            if (selected == null || rankOf(member).position < rankOf(selected).position)
+                selected = member;
+        }
+        return selected;
     }
 
     private void resolveAttack(PlayerOrder order, List<CombatEvent> events) {
