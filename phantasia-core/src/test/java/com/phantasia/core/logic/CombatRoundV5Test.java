@@ -94,6 +94,39 @@ class CombatRoundV5Test {
     }
 
     @Test
+    void victoryClosesCombatAndRejectsFurtherRoundsWithoutSpendingMp() {
+        PlayerRuntimeV5 caster = player("Sage", 400, 20);
+        Monster enemy = monster("Orc", 5);
+        CombatRoundV5 combat = new CombatRoundV5(List.of(caster), List.of(enemy));
+
+        RoundResult victory = combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.cast(caster, areaDamage(4, 20), null, null)));
+        assertEquals(CombatOutcome.VICTORY, victory.outcome());
+        assertEquals(16, caster.mp());
+        assertEquals(0, enemy.getHp());
+
+        assertThrows(IllegalStateException.class,
+                () -> combat.runRound(List.of(CombatRoundV5.PlayerOrder.cast(
+                        caster, areaDamage(4, 20), null, null))));
+        assertEquals(16, caster.mp(), "A completed encounter must not spend MP again");
+        assertEquals(CombatOutcome.VICTORY, combat.outcome());
+    }
+
+    @Test
+    void alreadyDefeatedPartyCannotStartCombatRound() {
+        PlayerRuntimeV5 caster = player("Sage", 10, 15);
+        Monster enemy = monster("Orc", 50);
+        CombatRoundV5 combat = new CombatRoundV5(List.of(caster), List.of(enemy));
+        caster.damage(10);
+        assertEquals(CombatOutcome.DEFEAT, combat.outcome());
+        assertThrows(IllegalStateException.class,
+                () -> combat.runRound(List.of(CombatRoundV5.PlayerOrder.cast(
+                        caster, areaDamage(5, 30), null, null))));
+        assertEquals(15, caster.mp());
+        assertEquals(50, enemy.getHp());
+    }
+
+    @Test
     void rejectsDuplicateCombatantsAndUnsupportedActions() {
         PlayerRuntimeV5 character = player("Sage", 50, 5);
         Monster enemy = monster("Orc", 10);
