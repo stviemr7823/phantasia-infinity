@@ -17,9 +17,14 @@ public final class SpellCastingV5 {
     private SpellCastingV5() {}
 
     public record Impact(String target, int damage) {}
-    public record Result(boolean cast, int mpSpent, List<Impact> impacts) {
+    public record Result(boolean cast, int mpSpent, List<Impact> impacts,
+                         List<String> missedTargets) {
         public Result {
             impacts = List.copyOf(impacts);
+            missedTargets = List.copyOf(missedTargets);
+        }
+        public Result(boolean cast, int mpSpent, List<Impact> impacts) {
+            this(cast, mpSpent, impacts, List.of());
         }
     }
 
@@ -52,12 +57,21 @@ public final class SpellCastingV5 {
             return new Result(false, 0, List.of());
 
         List<Impact> impacts = new ArrayList<>();
+        List<String> missed = new ArrayList<>();
+        int mind = caster.attribute(Attribute.MIND);
         for (Monster target : living) {
-            int damage = magicDamage(caster.attribute(Attribute.MIND), spell.getPower());
+            // Each enemy rolls separately, including enemies in an area spell.
+            // A resisted hit still belongs to the same once-paid cast.
+            int chance = Math.clamp(50 + mind - FormulaEngine.monsterDefenseValue(target), 5, 95);
+            if (!Dice.chance(chance)) {
+                missed.add(target.getName());
+                continue;
+            }
+            int damage = magicDamage(mind, spell.getPower());
             target.applyDamage(damage);
             impacts.add(new Impact(target.getName(), damage));
         }
-        return new Result(true, cost, impacts);
+        return new Result(true, cost, impacts, missed);
     }
 
     /**
