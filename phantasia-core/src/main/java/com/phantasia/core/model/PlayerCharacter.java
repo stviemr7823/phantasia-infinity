@@ -16,7 +16,6 @@ public class PlayerCharacter extends Entity
 
     private final DataCore core;
     private final Map<EquipSlot, ItemDefinition> equipment = new EnumMap<>(EquipSlot.class);
-    private final Map<Stat, Integer> baseStats = new EnumMap<>(Stat.class);
 
     public PlayerCharacter(DataCore core)
     {
@@ -416,13 +415,12 @@ public class PlayerCharacter extends Entity
     }
 
     /**
-     * Retrieves the raw, unmodified value of a stat before equipment or magic.
+     * Returns the persistent character stat without equipment modifiers.
+     * Legacy v4 has no independent base-stat cache: the record is authoritative.
      */
     public int getBaseStat(Stat stat)
     {
-        // Accessing your internal container for permanent/rolled stats.
-        // This ensures that recalculateStats() always starts from a clean baseline.
-        return this.getBaseStat(Stat.STRENGTH);
+        return getStat(java.util.Objects.requireNonNull(stat, "stat"));
     }
 
     /**
