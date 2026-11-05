@@ -116,16 +116,22 @@ public class PlayerCharacter extends Entity
     // Entity contract
     // -------------------------------------------------------------------------
 
+    /**
+     * Legacy compatibility only. Player limb injuries were retired: their
+     * packed v4 bytes overlap live magic-power fields.
+     */
     @Override
     public int getLimbStatus(Limb limb)
     {
-        return core.getLimbBitStatus(limb.ordinal());
+        java.util.Objects.requireNonNull(limb, "limb");
+        return 0;
     }
 
+    /** No player limb state is written; HP governs injury and defeat. */
     @Override
     public void setLimbStatus(Limb limb, int status)
     {
-        core.setLimbBitStatus(limb.ordinal(), status);
+        java.util.Objects.requireNonNull(limb, "limb");
     }
 
     /** Legacy v4 record accessor; not part of the shared Entity contract. */
@@ -143,7 +149,8 @@ public class PlayerCharacter extends Entity
     @Override
     public boolean canPerform(ActionType type)
     {
-        return getLimbStatus(Limb.HEAD) < 3;
+        java.util.Objects.requireNonNull(type, "type");
+        return isActiveInParty();
     }
 
     /**
