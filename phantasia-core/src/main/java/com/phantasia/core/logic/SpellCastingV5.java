@@ -42,13 +42,19 @@ public final class SpellCastingV5 {
         if (!caster.isAlive())
             return new Result(false, 0, List.of());
 
+        // Validate selection independently of whether targets survive until
+        // execution: another party member may have defeated them earlier.
+        java.util.Set<Monster> seen =
+                java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
         List<Monster> living = new ArrayList<>();
         for (Monster target : targets) {
             Objects.requireNonNull(target, "target");
+            if (!seen.add(target))
+                throw new IllegalArgumentException("Duplicate enemy target");
             if (target.isAlive()) living.add(target);
         }
-        if (spell.getTargetType() == Spell.TargetType.SINGLE_ENEMY && living.size() != 1)
-            throw new IllegalArgumentException("Single-enemy cast requires one living target");
+        if (spell.getTargetType() == Spell.TargetType.SINGLE_ENEMY && targets.size() != 1)
+            throw new IllegalArgumentException("Single-enemy cast requires one selected target");
         if (living.isEmpty())
             return new Result(false, 0, List.of());
 
