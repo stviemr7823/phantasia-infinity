@@ -1,6 +1,5 @@
 package com.phantasia.core.data;
 
-import com.phantasia.core.data.DataPaths;
 import com.phantasia.core.model.DataLayout;
 import com.phantasia.core.model.PlayerCharacter;
 import java.io.RandomAccessFile;
@@ -9,7 +8,7 @@ import java.io.File;
 
 /**
  * GlobalLedger: The Persistence Engine.
- * Manages the GAME.DAT file, storing pooled gold and the 48-byte DataCores.
+ * Manages the legacy GAME.DAT file, storing pooled gold and 64-byte v4 player records.
  *
  * Path is resolved via DataPaths.DAT_DIR so it moves with the rest of the
  * data layer and respects the -Dphantasia.data.dir override.
@@ -31,17 +30,22 @@ public class GlobalLedger {
     }
 
     /**
-     * Surgical Write: Commits a single character's 48-byte soul to a specific slot.
+     * Writes one complete legacy v4 player record to the selected roster slot.
+     * The record is exported through PlayerCharacter's defensive-copy gateway.
      */
     public void saveCharacter(int slot, PlayerCharacter pc) throws IOException {
         if (slot < 0 || slot > 5) throw new IllegalArgumentException("Invalid Roster Slot");
+        java.util.Objects.requireNonNull(pc, "pc");
+
+        byte[] record = pc.toLegacyRecordBytes();
+        if (record.length != DataLayout.RECORD_SIZE) {
+            throw new IOException("Unexpected legacy player record size: " + record.length);
+        }
 
         DataPaths.ensureParentDirs(FILE_PATH);
         try (RandomAccessFile raf = new RandomAccessFile(FILE_PATH, "rw")) {
-            // Seek to the exact byte where this character's data begins
             raf.seek(ROSTER_START + (slot * DataLayout.RECORD_SIZE));
-            // In a future update, we would expose the raw byte array from PlayerCharacter
-            // For now, we simulate the 48-byte write requirement
+            raf.write(record);
         }
     }
 
@@ -81,10 +85,10 @@ public class GlobalLedger {
         if (slot < 0 || slot > 5) throw new IllegalArgumentException("Invalid Roster Slot");
 
         try (RandomAccessFile raf = new RandomAccessFile(FILE_PATH, "r")) {
-            // 1. Seek to the start of the 48-byte slot
+            // 1. Seek to the start of the 64-byte slot
             raf.seek(ROSTER_START + (slot * DataLayout.RECORD_SIZE));
 
-            // 2. Read exactly 48 bytes (the 'soul' of the character)
+            // 2. Read one complete legacy v4 record
             byte[] rawSoul = new byte[DataLayout.RECORD_SIZE];
             raf.readFully(rawSoul);
 
