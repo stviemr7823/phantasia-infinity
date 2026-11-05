@@ -33,7 +33,6 @@ public abstract class Entity {
     public abstract int getLimbStatus(Limb limb);
     public abstract void setLimbStatus(Limb limb, int status);
     public abstract boolean canPerform(ActionType type);
-    public abstract DataCore getDataCore();
 
     public void takeDamage(int amount) {
         if (isParrying) amount /= 2;
