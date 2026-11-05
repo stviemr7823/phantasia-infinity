@@ -521,6 +521,7 @@ public class CombatPlanningScreen implements Screen {
             case LUNGE    -> "Lunge";
             case AIM_BLOW -> "Aim Blow";
             case PARRY    -> "Parry";
+            case RANGED_ATTACK -> "Ranged Attack";
             case CAST     -> "Cast Spell";
             case RUN      -> "Run";
             case NONE     -> "—";
