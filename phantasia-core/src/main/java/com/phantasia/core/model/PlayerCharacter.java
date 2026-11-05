@@ -129,7 +129,7 @@ public class PlayerCharacter extends Entity
         core.setLimbBitStatus(limb.ordinal(), status);
     }
 
-    @Override
+    /** Legacy v4 record accessor; not part of the shared Entity contract. */
     public DataCore getDataCore()
     {
         return core;
