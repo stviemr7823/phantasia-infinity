@@ -156,14 +156,17 @@ public final class SpellCastingV5 {
             return new Result(false, 0, List.of());
 
         List<Impact> impacts = new ArrayList<>();
+        List<String> misses = new ArrayList<>();
         int chance = sleepChance(caster.attribute(Attribute.MIND), 1);
         for (Monster target : living) {
             if (Dice.chance(chance)) {
                 target.setAsleep(true);
                 impacts.add(new Impact(target.getName(), 0));
+            } else {
+                misses.add(target.getName());
             }
         }
-        return new Result(true, cost, impacts);
+        return new Result(true, cost, impacts, misses);
     }
 
     /** Mirrors the legacy resistance formula using v5 Mind. */
