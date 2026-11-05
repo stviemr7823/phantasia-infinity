@@ -137,6 +137,34 @@ class CombatRoundV5Test {
     }
 
     @Test
+    void singleTargetSpellOnPreviouslyDefeatedEnemyFailsWithoutMpCharge() {
+        PlayerRuntimeV5 caster = player("Sage", 400, 20);
+        Monster defeated = monster("Defeated", 0);
+        Monster survivor = monster("Survivor", 30);
+        CombatRoundV5 combat = new CombatRoundV5(
+                List.of(caster), List.of(defeated, survivor));
+
+        DataCore record = new DataCore();
+        record.setName("Bolt");
+        record.setStat(DataLayout.SPELL_MP_COST, 5);
+        record.setStat(DataLayout.SPELL_POWER, 10);
+        record.setStat(DataLayout.SPELL_TARGET, Spell.TargetType.SINGLE_ENEMY.ordinal());
+        record.setStat(DataLayout.SPELL_EFFECT_TYPE, Spell.EffectType.DAMAGE.ordinal());
+
+        RoundResult result = combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.cast(caster, new Spell(record), defeated, null)));
+
+        assertEquals(1, result.roundNumber());
+        assertEquals(20, caster.mp());
+        assertEquals(0, defeated.getHp());
+        assertEquals(30, survivor.getHp());
+        assertTrue(result.events().stream().anyMatch(e ->
+                e instanceof CombatEvent.SpellCast cast
+                && cast.casterName().equals("Sage") && !cast.succeeded()));
+        assertEquals(CombatOutcome.ONGOING, result.outcome());
+    }
+
+    @Test
     void rejectsDuplicateCombatantsAndUnsupportedActions() {
         PlayerRuntimeV5 character = player("Sage", 50, 5);
         Monster enemy = monster("Orc", 10);
