@@ -57,7 +57,7 @@ public final class CombatOrderPlannerV5 {
         for (PlayerRuntimeV5 member : party) {
             CombatRoundV5.PlayerOrder order = selections.get(member);
             RowStatus status;
-            if (!member.isAlive()) {
+            if (!member.isAlive() || combat.outcome() != CombatOutcome.ONGOING) {
                 status = RowStatus.INACTIVE;
             } else if (order == null) {
                 status = RowStatus.NEEDS_ORDER;
