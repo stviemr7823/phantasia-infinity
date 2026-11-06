@@ -298,6 +298,59 @@ class CombatRoundV5Test {
                 && cast.targetName().equals("No valid target")));
     }
 
+
+    @Test
+    void awakenCastAnnouncementPrecedesStatusChanges() {
+        PlayerRuntimeV5 caster = player("Sage", 400, 20);
+        PlayerRuntimeV5 ally = player("Ally", 400, 0);
+        ally.setAsleep(true);
+        Monster enemy = monster("Orc", 100);
+        DataCore data = new DataCore();
+        data.setName("Awaken");
+        data.setStat(DataLayout.SPELL_MP_COST, 3);
+        data.setStat(DataLayout.SPELL_TARGET, Spell.TargetType.SINGLE_ALLY.ordinal());
+        data.setStat(DataLayout.SPELL_EFFECT_TYPE, Spell.EffectType.AWAKEN.ordinal());
+        CombatRoundV5 combat = new CombatRoundV5(List.of(caster, ally), List.of(enemy),
+                java.util.Map.of(), java.util.Map.of(),
+                actor -> actor == caster ? 30 : 10, (actor, target) -> true);
+
+        RoundResult result = combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.cast(caster, new Spell(data), null, ally)));
+
+        assertEquals(17, caster.mp());
+        assertFalse(ally.isAsleep());
+        assertTrue(result.events().get(1) instanceof CombatEvent.SpellCast sc
+                && sc.succeeded() && sc.spellName().equals("Awaken"));
+        assertTrue(result.events().get(2) instanceof CombatEvent.StatusChange change
+                && change.entityName().equals("Ally") && !change.applied());
+        assertEquals(1, result.events().stream()
+                .filter(e -> e instanceof CombatEvent.SpellCast).count());
+    }
+
+    @Test
+    void awakenAlreadyAwakeAllyHasOneCastAnnouncementAndNoStatusChange() {
+        PlayerRuntimeV5 caster = player("Sage", 400, 20);
+        PlayerRuntimeV5 ally = player("Ally", 400, 0);
+        Monster enemy = monster("Orc", 100);
+        DataCore data = new DataCore();
+        data.setName("Awaken");
+        data.setStat(DataLayout.SPELL_MP_COST, 3);
+        data.setStat(DataLayout.SPELL_TARGET, Spell.TargetType.SINGLE_ALLY.ordinal());
+        data.setStat(DataLayout.SPELL_EFFECT_TYPE, Spell.EffectType.AWAKEN.ordinal());
+        CombatRoundV5 combat = new CombatRoundV5(List.of(caster, ally), List.of(enemy),
+                java.util.Map.of(), java.util.Map.of(),
+                actor -> actor == caster ? 30 : 10, (actor, target) -> true);
+
+        RoundResult result = combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.cast(caster, new Spell(data), null, ally)));
+        assertEquals(17, caster.mp());
+        assertFalse(ally.isAsleep());
+        assertEquals(1, result.events().stream()
+                .filter(e -> e instanceof CombatEvent.SpellCast sc && sc.succeeded()).count());
+        assertEquals(0, result.events().stream()
+                .filter(e -> e instanceof CombatEvent.StatusChange).count());
+    }
+
     @Test
     void rejectsDuplicateCombatantsAndUnsupportedActions() {
         PlayerRuntimeV5 character = player("Sage", 50, 5);
