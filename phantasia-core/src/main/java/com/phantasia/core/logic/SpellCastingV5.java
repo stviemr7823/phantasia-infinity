@@ -39,9 +39,6 @@ public final class SpellCastingV5 {
         if (spell.getTargetType() != Spell.TargetType.SINGLE_ENEMY
                 && spell.getTargetType() != Spell.TargetType.ALL_ENEMIES)
             throw new IllegalArgumentException("Damage spell requires enemy targets");
-        if (!caster.isAlive())
-            return new Result(false, 0, List.of());
-
         // Validate selection independently of whether targets survive until
         // execution: another party member may have defeated them earlier.
         java.util.Set<Monster> seen =
@@ -55,7 +52,7 @@ public final class SpellCastingV5 {
         }
         if (spell.getTargetType() == Spell.TargetType.SINGLE_ENEMY && targets.size() != 1)
             throw new IllegalArgumentException("Single-enemy cast requires one selected target");
-        if (living.isEmpty())
+        if (!caster.isAlive() || living.isEmpty())
             return new Result(false, 0, List.of());
 
         int cost = spell.getMpCost();
