@@ -131,6 +131,27 @@ class SpellCastingV5Test {
         assertEquals(50, enemy.getHp());
     }
 
+
+    @Test
+    void defeatedCasterStillValidatesDamageTargetShapeAndIdentity() {
+        PlayerRuntimeV5 mage = caster(10, 8);
+        mage.damage(mage.hp());
+        Monster enemy = monster("Orc", 50);
+        Spell area = damageSpell(3, 8, Spell.TargetType.ALL_ENEMIES);
+        Spell single = damageSpell(3, 8, Spell.TargetType.SINGLE_ENEMY);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> SpellCastingV5.castDamage(mage, area, List.of(enemy, enemy)));
+        assertThrows(IllegalArgumentException.class,
+                () -> SpellCastingV5.castDamage(mage, single, List.of()));
+        SpellCastingV5.Result rejected = SpellCastingV5.castDamage(
+                mage, single, List.of(enemy));
+        assertFalse(rejected.cast());
+        assertEquals(0, rejected.mpSpent());
+        assertEquals(10, mage.mp());
+        assertEquals(50, enemy.getHp());
+    }
+
     @Test
     void mindVarianceAndDamageCapAreBounded() {
         assertEquals(11, SpellCastingV5.magicDamage(0, 11));
