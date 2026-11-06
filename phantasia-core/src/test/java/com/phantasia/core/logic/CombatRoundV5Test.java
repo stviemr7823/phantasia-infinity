@@ -384,6 +384,60 @@ class CombatRoundV5Test {
         assertEquals(20, enemy.getHp(), "Sleep cannot deal physical damage");
     }
 
+
+    @Test
+    void parryIsPreplannedAndExpiresAtEndOfRound() {
+        PlayerRuntimeV5 guard = player("Guard", 400, 0);
+        Monster enemy = monster("Orc", 20);
+        CombatRoundV5 combat = new CombatRoundV5(
+                List.of(guard), List.of(enemy), java.util.Map.of(), java.util.Map.of(),
+                actor -> actor == enemy ? 30 : 10, (actor, target) -> true);
+
+        RoundResult first = combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.parry(guard)));
+        assertTrue(first.events().get(0) instanceof CombatEvent.RoundHeader);
+        assertTrue(first.events().get(1) instanceof CombatEvent.StatusChange sc
+                && sc.entityName().equals("Guard")
+                && sc.condition().equals("Parrying") && sc.applied());
+        assertTrue(first.events().getLast() instanceof CombatEvent.StatusChange sc
+                && sc.entityName().equals("Guard")
+                && sc.condition().equals("Parrying") && !sc.applied());
+        assertEquals(0, first.events().stream()
+                .filter(e -> e instanceof CombatEvent.Hit hit
+                        && hit.attackerName().equals("Guard")).count());
+
+        RoundResult second = combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.idle(guard)));
+        assertEquals(0, second.events().stream()
+                .filter(e -> e instanceof CombatEvent.StatusChange sc
+                        && sc.condition().equals("Parrying")).count());
+        assertEquals(0, guard.mp());
+    }
+
+    @Test
+    void parryReductionRoundsUpAndRejectsInvalidOrders() {
+        assertEquals(0, CombatRoundV5.parriedDamage(0));
+        assertEquals(1, CombatRoundV5.parriedDamage(1));
+        assertEquals(1, CombatRoundV5.parriedDamage(2));
+        assertEquals(2, CombatRoundV5.parriedDamage(3));
+        assertEquals(50, CombatRoundV5.parriedDamage(99));
+        assertThrows(IllegalArgumentException.class,
+                () -> CombatRoundV5.parriedDamage(-1));
+
+        PlayerRuntimeV5 guard = player("Guard", 400, 0);
+        Monster enemy = monster("Orc", 20);
+        CombatRoundV5 combat = new CombatRoundV5(List.of(guard), List.of(enemy));
+        CombatRoundV5.PlayerOrder invalid = new CombatRoundV5.PlayerOrder(
+                guard, com.phantasia.core.model.Action.PARRY,
+                enemy, null, null, null);
+        assertThrows(IllegalArgumentException.class,
+                () -> combat.runRound(List.of(invalid)));
+        assertEquals(20, enemy.getHp());
+        assertEquals(0, guard.mp());
+        assertEquals(1, combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.parry(guard))).roundNumber());
+    }
+
     @Test
     void rejectsDuplicateCombatantsAndUnsupportedActions() {
         PlayerRuntimeV5 character = player("Sage", 50, 5);
