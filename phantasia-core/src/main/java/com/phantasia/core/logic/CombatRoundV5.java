@@ -365,6 +365,11 @@ public final class CombatRoundV5 {
     private void resolveCast(PlayerOrder order, List<CombatEvent> events) {
         Spell spell = order.spell();
         PlayerRuntimeV5 caster = order.actor();
+        // Track monster identity, not display names. A defeated monster may
+        // share a name with the target actually struck by this cast.
+        List<Monster> aliveBeforeDamage = spell.getEffectType() == Spell.EffectType.DAMAGE
+                ? enemyTargets(order).stream().filter(Monster::isAlive).toList()
+                : List.of();
         SpellCastingV5.Result result = switch (spell.getEffectType()) {
             case DAMAGE -> SpellCastingV5.castDamage(caster, spell, enemyTargets(order));
             case SLEEP -> SpellCastingV5.castSleep(caster, spell, enemyTargets(order));
@@ -392,12 +397,11 @@ public final class CombatRoundV5 {
         if (result.impacts().isEmpty() && result.missedTargets().isEmpty())
             events.add(new CombatEvent.SpellCast(caster.name(), spell.getName(),
                     "No effect", 0, true));
-        if (spell.getEffectType() == Spell.EffectType.DAMAGE) {
-            for (Monster enemy : enemyTargets(order))
-                if (!enemy.isAlive() && result.impacts().stream()
-                        .anyMatch(impact -> impact.target().equals(enemy.getName())))
-                    events.add(new CombatEvent.Death(enemy.getName(), false));
-        }
+        // Only monsters alive immediately before this cast can have died
+        // from it. Never match death events using non-unique display names.
+        for (Monster enemy : aliveBeforeDamage)
+            if (!enemy.isAlive())
+                events.add(new CombatEvent.Death(enemy.getName(), false));
     }
 
     private List<Monster> enemyTargets(PlayerOrder order) {
