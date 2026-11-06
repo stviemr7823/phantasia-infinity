@@ -25,7 +25,7 @@ import java.util.function.ToIntFunction;
  * while monsters temporarily retain their existing typed v4 wrapper.
  * This does not replace the production v4 CombatManager.
  *
- * ATTACK, LUNGE, RANGED_ATTACK, PARRY, CAST and NONE are supported player orders.
+ * ATTACK, THRUST, LUNGE, RANGED_ATTACK, PARRY, CAST and NONE are supported player orders.
  * Monster AI is a simple attack against the first living party member.
  */
 public final class CombatRoundV5 {
@@ -35,7 +35,7 @@ public final class CombatRoundV5 {
         public PlayerOrder {
             Objects.requireNonNull(actor, "actor");
             Objects.requireNonNull(action, "action");
-            if (action != Action.ATTACK && action != Action.LUNGE
+            if (action != Action.ATTACK && action != Action.THRUST && action != Action.LUNGE
                     && action != Action.RANGED_ATTACK
                     && action != Action.PARRY
                     && action != Action.CAST && action != Action.NONE)
@@ -44,6 +44,10 @@ public final class CombatRoundV5 {
 
         public static PlayerOrder attack(PlayerRuntimeV5 actor, Monster target, CombatRank rank) {
             return new PlayerOrder(actor, Action.ATTACK, target, null, null, rank);
+        }
+        /** Single melee strike with a modest hit-chance bonus. */
+        public static PlayerOrder thrust(PlayerRuntimeV5 actor, Monster target, CombatRank rank) {
+            return new PlayerOrder(actor, Action.THRUST, target, null, null, rank);
         }
         /** Front-rank lunge may reach the enemy's second (middle) rank. */
         public static PlayerOrder lunge(PlayerRuntimeV5 actor, Monster target, CombatRank rank) {
@@ -72,6 +76,7 @@ public final class CombatRoundV5 {
     private int roundNumber;
     private final ToIntFunction<Object> initiativeRoll;
     private final BiPredicate<PlayerRuntimeV5, Monster> playerHitRoll;
+    private final BiPredicate<PlayerRuntimeV5, Monster> thrustHitRoll;
     private final BiPredicate<Monster, PlayerRuntimeV5> monsterHitRoll;
     private final ToIntFunction<Monster> monsterDamageRoll;
 
@@ -119,6 +124,21 @@ public final class CombatRoundV5 {
                   BiPredicate<PlayerRuntimeV5, Monster> playerHitRoll,
                   BiPredicate<Monster, PlayerRuntimeV5> monsterHitRoll,
                   ToIntFunction<Monster> monsterDamageRoll) {
+        this(party, enemies, assignedRanks, assignedEnemyRanks,
+                initiativeRoll, playerHitRoll, monsterHitRoll, monsterDamageRoll,
+                (actor, defender) -> Dice.chance(thrustHitChance(actor, defender)));
+    }
+
+    /** Extended deterministic test seam for THRUST. */
+    CombatRoundV5(List<PlayerRuntimeV5> party, List<Monster> enemies,
+                  Map<PlayerRuntimeV5, CombatRank> assignedRanks,
+                  Map<Monster, CombatRank> assignedEnemyRanks,
+                  ToIntFunction<Object> initiativeRoll,
+                  BiPredicate<PlayerRuntimeV5, Monster> playerHitRoll,
+                  BiPredicate<Monster, PlayerRuntimeV5> monsterHitRoll,
+                  ToIntFunction<Monster> monsterDamageRoll,
+                  BiPredicate<PlayerRuntimeV5, Monster> thrustHitRoll) {
+        this.thrustHitRoll = Objects.requireNonNull(thrustHitRoll, "thrustHitRoll");
         this.initiativeRoll = Objects.requireNonNull(initiativeRoll, "initiativeRoll");
         this.playerHitRoll = Objects.requireNonNull(playerHitRoll, "playerHitRoll");
         this.monsterHitRoll = Objects.requireNonNull(monsterHitRoll, "monsterHitRoll");
@@ -263,6 +283,11 @@ public final class CombatRoundV5 {
         return new RoundResult(roundNumber, List.copyOf(events), outcome());
     }
 
+    /** THRUST grants +15 percentage points, respecting the standard 5–95 bounds. */
+    static int thrustHitChance(PlayerRuntimeV5 attacker, Monster defender) {
+        return Math.clamp(FormulaEngine.playerHitChance(attacker, defender) + 15, 5, 95);
+    }
+
     /** Halve incoming physical damage, rounding up; a hit still deals at least one. */
     static int parriedDamage(int damage) {
         if (damage < 0) throw new IllegalArgumentException("Negative damage");
@@ -270,7 +295,8 @@ public final class CombatRoundV5 {
     }
 
     private void validateOrder(PlayerOrder order) {
-        if (order.action() == Action.ATTACK || order.action() == Action.LUNGE) {
+        if (order.action() == Action.ATTACK || order.action() == Action.THRUST
+                || order.action() == Action.LUNGE) {
             if (order.rank() == null || order.rank() != rankOf(order.actor())
                     || order.enemyTarget() == null
                     || !containsIdentity(enemies, order.enemyTarget())
@@ -353,7 +379,10 @@ public final class CombatRoundV5 {
                     "TARGET_OUT_OF_REACH"));
             return;
         }
-        if (!playerHitRoll.test(attacker, target)) {
+        boolean hit = order.action() == Action.THRUST
+                ? thrustHitRoll.test(attacker, target)
+                : playerHitRoll.test(attacker, target);
+        if (!hit) {
             events.add(new CombatEvent.Miss(attacker.name(), target.getName()));
             return;
         }
