@@ -95,7 +95,7 @@ public class CombatNarrator {
                             + ("TARGET_DEFEATED".equals(skipped.reason())
                                 ? " — target already defeated"
                                 : " — " + ("TARGET_OUT_OF_REACH".equals(skipped.reason())
-                                    ? "target out of reach" : "bow unavailable");
+                                    ? "target out of reach" : "bow unavailable"));
 
             case CombatEvent.Death d ->
                     d.entityName() + " dies";
