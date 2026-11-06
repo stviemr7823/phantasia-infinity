@@ -389,6 +389,13 @@ public final class CombatRoundV5 {
                     reason, 0, false));
             return;
         }
+        // Status casts need an explicit announcement even when every target
+        // resists or is already awake. Emit it before individual outcomes.
+        boolean statusSpell = spell.getEffectType() == Spell.EffectType.SLEEP
+                || spell.getEffectType() == Spell.EffectType.AWAKEN;
+        if (statusSpell)
+            events.add(new CombatEvent.SpellCast(caster.name(), spell.getName(),
+                    "No effect", 0, true));
         for (String missedTarget : result.missedTargets())
             events.add(new CombatEvent.Miss(caster.name(), missedTarget));
         for (SpellCastingV5.Impact impact : result.impacts()) {
@@ -401,7 +408,7 @@ public final class CombatRoundV5 {
                         impact.target(), impact.damage(), true));
             }
         }
-        if (result.impacts().isEmpty() && result.missedTargets().isEmpty())
+        if (!statusSpell && result.impacts().isEmpty() && result.missedTargets().isEmpty())
             events.add(new CombatEvent.SpellCast(caster.name(), spell.getName(),
                     "No effect", 0, true));
         // Only monsters alive immediately before this cast can have died
