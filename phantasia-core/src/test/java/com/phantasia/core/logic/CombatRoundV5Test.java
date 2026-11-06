@@ -164,6 +164,51 @@ class CombatRoundV5Test {
         assertEquals(CombatOutcome.ONGOING, result.outcome());
     }
 
+
+    @Test
+    void defeatedMeleeTargetSkipsWithoutRetargetingOrFalseMiss() {
+        PlayerRuntimeV5 attacker = player("Fighter", 400, 0);
+        Monster defeated = monster("Orc", 0);
+        Monster survivor = monster("Orc", 100);
+        CombatRoundV5 combat = new CombatRoundV5(
+                List.of(attacker), List.of(defeated, survivor));
+
+        RoundResult result = combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.attack(attacker, defeated,
+                        com.phantasia.core.model.CombatRank.FRONT)));
+
+        assertEquals(100, survivor.getHp());
+        assertEquals(0, defeated.getHp());
+        assertTrue(result.events().stream().anyMatch(e ->
+                e instanceof CombatEvent.ActionSkipped skipped
+                && skipped.actorName().equals("Fighter")
+                && skipped.reason().equals("TARGET_DEFEATED")));
+        assertFalse(result.events().stream().anyMatch(e ->
+                e instanceof CombatEvent.Miss miss
+                && miss.attackerName().equals("Fighter")));
+        assertFalse(result.events().stream().anyMatch(e ->
+                e instanceof CombatEvent.Death));
+    }
+
+    @Test
+    void newlyShieldedMeleeTargetSkipsWithReachReason() {
+        PlayerRuntimeV5 attacker = player("Fighter", 400, 0);
+        Monster front = monster("Front", 0);
+        Monster middle = monster("Middle", 100);
+        CombatRoundV5 combat = new CombatRoundV5(
+                List.of(attacker), List.of(front, middle), java.util.Map.of(),
+                java.util.Map.of(front, com.phantasia.core.model.CombatRank.FRONT,
+                        middle, com.phantasia.core.model.CombatRank.MIDDLE));
+
+        // Middle is not exposed while a living front enemy remains. A
+        // previously valid attack becomes invalid if the front revives or
+        // rank protection changes; direct validation rejects such orders.
+        assertThrows(IllegalArgumentException.class, () -> combat.runRound(
+                List.of(CombatRoundV5.PlayerOrder.attack(attacker, middle,
+                        com.phantasia.core.model.CombatRank.FRONT))));
+        assertEquals(100, middle.getHp());
+    }
+
     @Test
     void rejectsDuplicateCombatantsAndUnsupportedActions() {
         PlayerRuntimeV5 character = player("Sage", 50, 5);
