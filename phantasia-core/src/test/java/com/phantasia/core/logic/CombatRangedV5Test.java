@@ -79,6 +79,35 @@ class CombatRangedV5Test {
         assertEquals(1, result.roundNumber(), "Rejected plans cannot consume a round");
     }
 
+
+    @Test
+    void rangedOrderSkippedAfterEarlierMeleeKill() {
+        PlayerRuntimeV5 fighter = player("Fighter");
+        PlayerRuntimeV5 archer = player("Archer");
+        archer.equip(EquipSlot.BOW, 44);
+        Monster target = monster("Orc");
+        target.setHp(1);
+        Monster remaining = monster("Orc");
+        CombatRoundV5 combat = new CombatRoundV5(
+                List.of(fighter, archer), List.of(target, remaining),
+                Map.of(), Map.of(),
+                actor -> actor == fighter ? 30 : actor == archer ? 20 : 10,
+                (attacker, defender) -> true);
+        RoundResult result = combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.attack(fighter, target, CombatRank.FRONT),
+                CombatRoundV5.PlayerOrder.ranged(archer, target)));
+
+        assertEquals(0, target.getHp());
+        assertEquals(200, remaining.getHp());
+        assertEquals(44, archer.equippedItemId(EquipSlot.BOW));
+        assertEquals(1, result.events().stream().filter(e ->
+                e instanceof CombatEvent.ActionSkipped skipped
+                && skipped.actorName().equals("Archer")
+                && skipped.reason().equals("TARGET_DEFEATED")).count());
+        assertEquals(1, result.events().stream().filter(e ->
+                e instanceof CombatEvent.Death d && !d.wasPartyMember()).count());
+    }
+
     @Test
     void rangedAttackRejectsMeleeEquipmentAsBow() {
         PlayerRuntimeV5 archer = player("Archer");
