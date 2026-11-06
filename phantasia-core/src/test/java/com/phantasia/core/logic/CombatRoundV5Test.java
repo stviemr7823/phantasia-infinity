@@ -494,6 +494,46 @@ class CombatRoundV5Test {
     }
 
     @Test
+    void thrustUsesAccuracyPathWithoutChangingDamageOrReach() {
+        PlayerRuntimeV5 fighter = player("Fighter", 400, 0);
+        Monster front = monster("Front", 200);
+        Monster rear = monster("Rear", 200);
+        CombatRoundV5 combat = new CombatRoundV5(
+                List.of(fighter), List.of(front, rear), java.util.Map.of(),
+                java.util.Map.of(front, com.phantasia.core.model.CombatRank.FRONT,
+                        rear, com.phantasia.core.model.CombatRank.BACK),
+                actor -> actor == fighter ? 30 : 10,
+                (actor, target) -> false,
+                (monster, defender) -> false,
+                monster -> 0,
+                (actor, target) -> true);
+
+        assertThrows(IllegalArgumentException.class, () -> combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.thrust(fighter, rear,
+                        com.phantasia.core.model.CombatRank.FRONT))));
+        RoundResult result = combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.thrust(fighter, front,
+                        com.phantasia.core.model.CombatRank.FRONT)));
+        assertTrue(result.events().stream().anyMatch(event ->
+                event instanceof CombatEvent.Hit hit
+                && hit.attackerName().equals("Fighter")
+                && hit.targetName().equals("Front")
+                && hit.damage() > 0));
+        assertEquals(200, rear.getHp());
+        assertEquals(0, fighter.mp());
+    }
+
+    @Test
+    void thrustAccuracyBonusIsClampedToStandardHitCap() {
+        PlayerRuntimeV5 fighter = player("Fighter", 400, 0);
+        Monster target = monster("Orc", 1);
+        int normal = FormulaEngine.playerHitChance(fighter, target);
+        assertEquals(Math.min(95, normal + 15),
+                CombatRoundV5.thrustHitChance(fighter, target));
+        assertTrue(CombatRoundV5.thrustHitChance(fighter, target) <= 95);
+    }
+
+    @Test
     void rejectsDuplicateCombatantsAndUnsupportedActions() {
         PlayerRuntimeV5 character = player("Sage", 50, 5);
         Monster enemy = monster("Orc", 10);
