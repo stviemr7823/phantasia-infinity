@@ -235,6 +235,33 @@ class CombatRoundV5Test {
                 e instanceof CombatEvent.Death d && !d.wasPartyMember()).count());
     }
 
+
+    @Test
+    void spellDeathDoesNotDuplicateAlreadyDeadSameNamedMonster() {
+        PlayerRuntimeV5 caster = player("Sage", 400, 100);
+        Monster alreadyDead = monster("Orc", 0);
+        Monster living = monster("Orc", 1);
+        CombatRoundV5 combat = new CombatRoundV5(
+                List.of(caster), List.of(alreadyDead, living));
+        Spell burst = areaDamage(1, 20);
+
+        // Hits are random. A miss spends MP but cannot generate a death.
+        // Repeat until a hit, without expecting a 95% roll to always land.
+        int deaths = 0;
+        for (int attempt = 0; attempt < 30 && combat.outcome() == CombatOutcome.ONGOING; attempt++) {
+            RoundResult result = combat.runRound(List.of(
+                    CombatRoundV5.PlayerOrder.cast(caster, burst, null, null)));
+            deaths += (int) result.events().stream().filter(e ->
+                    e instanceof CombatEvent.Death d && !d.wasPartyMember()).count();
+        }
+
+        assertEquals(CombatOutcome.VICTORY, combat.outcome());
+        assertEquals(0, alreadyDead.getHp());
+        assertEquals(0, living.getHp());
+        assertEquals(1, deaths,
+                "An already-dead monster with the same name must not be killed again");
+    }
+
     @Test
     void rejectsDuplicateCombatantsAndUnsupportedActions() {
         PlayerRuntimeV5 character = player("Sage", 50, 5);
