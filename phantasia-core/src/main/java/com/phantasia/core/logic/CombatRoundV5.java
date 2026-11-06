@@ -25,7 +25,7 @@ import java.util.function.ToIntFunction;
  * while monsters temporarily retain their existing typed v4 wrapper.
  * This does not replace the production v4 CombatManager.
  *
- * ATTACK, THRUST, LUNGE, RANGED_ATTACK, PARRY, CAST and NONE are supported player orders.
+ * ATTACK, THRUST, SLASH, LUNGE, RANGED_ATTACK, PARRY, CAST and NONE are supported player orders.
  * Monster AI is a simple attack against the first living party member.
  */
 public final class CombatRoundV5 {
@@ -35,7 +35,8 @@ public final class CombatRoundV5 {
         public PlayerOrder {
             Objects.requireNonNull(actor, "actor");
             Objects.requireNonNull(action, "action");
-            if (action != Action.ATTACK && action != Action.THRUST && action != Action.LUNGE
+            if (action != Action.ATTACK && action != Action.THRUST && action != Action.SLASH
+                    && action != Action.LUNGE
                     && action != Action.RANGED_ATTACK
                     && action != Action.PARRY
                     && action != Action.CAST && action != Action.NONE)
@@ -48,6 +49,10 @@ public final class CombatRoundV5 {
         /** Single melee strike with a modest hit-chance bonus. */
         public static PlayerOrder thrust(PlayerRuntimeV5 actor, Monster target, CombatRank rank) {
             return new PlayerOrder(actor, Action.THRUST, target, null, null, rank);
+        }
+        /** Three independent melee swings against one selected enemy. */
+        public static PlayerOrder slash(PlayerRuntimeV5 actor, Monster target, CombatRank rank) {
+            return new PlayerOrder(actor, Action.SLASH, target, null, null, rank);
         }
         /** Front-rank lunge may reach the enemy's second (middle) rank. */
         public static PlayerOrder lunge(PlayerRuntimeV5 actor, Monster target, CombatRank rank) {
@@ -296,7 +301,7 @@ public final class CombatRoundV5 {
 
     private void validateOrder(PlayerOrder order) {
         if (order.action() == Action.ATTACK || order.action() == Action.THRUST
-                || order.action() == Action.LUNGE) {
+                || order.action() == Action.SLASH || order.action() == Action.LUNGE) {
             if (order.rank() == null || order.rank() != rankOf(order.actor())
                     || order.enemyTarget() == null
                     || !containsIdentity(enemies, order.enemyTarget())
@@ -379,19 +384,25 @@ public final class CombatRoundV5 {
                     "TARGET_OUT_OF_REACH"));
             return;
         }
-        boolean hit = order.action() == Action.THRUST
-                ? thrustHitRoll.test(attacker, target)
-                : playerHitRoll.test(attacker, target);
-        if (!hit) {
-            events.add(new CombatEvent.Miss(attacker.name(), target.getName()));
-            return;
+        // Match the legacy SLASH convention: three independent attempts,
+        // never switching targets or continuing after a killing blow.
+        int swings = order.action() == Action.SLASH ? 3 : 1;
+        for (int swing = 0; swing < swings && target.isAlive(); swing++) {
+            boolean hit = order.action() == Action.THRUST
+                    ? thrustHitRoll.test(attacker, target)
+                    : playerHitRoll.test(attacker, target);
+            if (!hit) {
+                events.add(new CombatEvent.Miss(attacker.name(), target.getName()));
+                continue;
+            }
+            int damage = FormulaEngine.calculatePlayerDamage(attacker, order.rank());
+            boolean critical = FormulaEngine.rollCritical();
+            if (critical) damage = FormulaEngine.applyCritical(damage);
+            target.applyDamage(damage);
+            events.add(new CombatEvent.Hit(attacker.name(), target.getName(), damage, "Body", critical));
+            if (!target.isAlive())
+                events.add(new CombatEvent.Death(target.getName(), false));
         }
-        int damage = FormulaEngine.calculatePlayerDamage(attacker, order.rank());
-        boolean critical = FormulaEngine.rollCritical();
-        if (critical) damage = FormulaEngine.applyCritical(damage);
-        target.applyDamage(damage);
-        events.add(new CombatEvent.Hit(attacker.name(), target.getName(), damage, "Body", critical));
-        if (!target.isAlive()) events.add(new CombatEvent.Death(target.getName(), false));
     }
 
     /** A bow can reach any living enemy rank, including from the back line. */
