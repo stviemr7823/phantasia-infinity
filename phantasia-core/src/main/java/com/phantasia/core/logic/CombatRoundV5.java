@@ -72,6 +72,8 @@ public final class CombatRoundV5 {
     private int roundNumber;
     private final ToIntFunction<Object> initiativeRoll;
     private final BiPredicate<PlayerRuntimeV5, Monster> playerHitRoll;
+    private final BiPredicate<Monster, PlayerRuntimeV5> monsterHitRoll;
+    private final ToIntFunction<Monster> monsterDamageRoll;
 
     /** Compatibility constructor: all party members initially occupy the front rank. */
     public CombatRoundV5(List<PlayerRuntimeV5> party, List<Monster> enemies) {
@@ -104,8 +106,23 @@ public final class CombatRoundV5 {
                   Map<Monster, CombatRank> assignedEnemyRanks,
                   ToIntFunction<Object> initiativeRoll,
                   BiPredicate<PlayerRuntimeV5, Monster> playerHitRoll) {
+        this(party, enemies, assignedRanks, assignedEnemyRanks,
+                initiativeRoll, playerHitRoll,
+                FormulaEngine::monsterRollToHit, FormulaEngine::calculateMonsterDamage);
+    }
+
+    /** Package-private test seam; public encounters retain ordinary dice. */
+    CombatRoundV5(List<PlayerRuntimeV5> party, List<Monster> enemies,
+                  Map<PlayerRuntimeV5, CombatRank> assignedRanks,
+                  Map<Monster, CombatRank> assignedEnemyRanks,
+                  ToIntFunction<Object> initiativeRoll,
+                  BiPredicate<PlayerRuntimeV5, Monster> playerHitRoll,
+                  BiPredicate<Monster, PlayerRuntimeV5> monsterHitRoll,
+                  ToIntFunction<Monster> monsterDamageRoll) {
         this.initiativeRoll = Objects.requireNonNull(initiativeRoll, "initiativeRoll");
         this.playerHitRoll = Objects.requireNonNull(playerHitRoll, "playerHitRoll");
+        this.monsterHitRoll = Objects.requireNonNull(monsterHitRoll, "monsterHitRoll");
+        this.monsterDamageRoll = Objects.requireNonNull(monsterDamageRoll, "monsterDamageRoll");
         this.party = List.copyOf(Objects.requireNonNull(party, "party"));
         this.enemies = List.copyOf(Objects.requireNonNull(enemies, "enemies"));
         requireUnique(this.party);
@@ -227,11 +244,11 @@ public final class CombatRoundV5 {
                 if (!monster.isAlive() || monster.isAsleep()) continue;
                 PlayerRuntimeV5 defender = preferredMonsterTarget();
                 if (defender == null) continue;
-                if (!FormulaEngine.monsterRollToHit(monster, defender)) {
+                if (!monsterHitRoll.test(monster, defender)) {
                     events.add(new CombatEvent.Miss(monster.getName(), defender.name()));
                     continue;
                 }
-                int damage = FormulaEngine.calculateMonsterDamage(monster);
+                int damage = monsterDamageRoll.applyAsInt(monster);
                 if (parrying.contains(defender)) damage = parriedDamage(damage);
                 defender.damage(damage);
                 events.add(new CombatEvent.Hit(monster.getName(), defender.name(), damage,
