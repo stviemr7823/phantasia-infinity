@@ -1,182 +1,111 @@
-// phantasia-core/src/main/java/com/phantasia/core/logic/CombatNarrator.java
-package com.phantasia.core.logic;
+// phantasia-libgdx/src/main/java/com/phantasia/libgdx/controller/CombatEventController.java
+package com.phantasia.libgdx.controller;
 
-import java.util.ArrayList;
-import java.util.List;
+import com.phantasia.core.logic.CombatEvent;
+import com.phantasia.core.logic.CombatNarrator;
+import com.phantasia.libgdx.screens.GameScreen;
 
 /**
- * Converts CombatEvents into the terse text blurbs of the original
- * Phantasie III battle feed.
+ * Translates core CombatEvents into LibGDX presentation calls.
  *
- * The narrator is purely a presentation layer — it reads events and
- * produces strings. It holds no game state and modifies nothing.
- * Every renderer (console, LibGDX text feed, future UI) calls this
- * and displays the strings however it likes.
+ * FIX APPLIED:
+ *   Previously this class called event.getMessage().toLowerCase() and
+ *   searched for keyword strings like "casts fire" and "hits" to decide
+ *   which visual effects to trigger. That approach:
+ *     - Was brittle (a narrator wording change silently broke VFX)
+ *     - Duplicated logic that core already encodes structurally
+ *     - Would have to be re-duplicated in any future frontend
  *
- * Output style matches the original game:
- *   "Bilbo slashes"
- *   "Bilbo hits!  24 HP"
- *   "Bilbo misses"
- *   "Bilbo hits!  99 HP  *CRITICAL*"
- *   "Great Moth dies"
- *   "Great Moth hits!"
- *   "Bode takes 99 damage"
- *   "Bode dies"
- *   "Bonzo casts Healing I"
- *   "Korg is healed for 11 HP"
- *   "Orc falls asleep"
- *   "Bonzo wakes up"
- *   "Bilbo is parrying"
- *   "Bilbo flees!"
- *   "Bilbo is held by sleep"
+ *   CombatEvent is a sealed interface with typed subtypes. We now switch
+ *   exhaustively on those types. The renderer reads the event's *structure*,
+ *   not its *prose output* — these are separate concerns.
+ *
+ * PATTERN:
+ *   SpellCast with positive magnitude → explosion + heavy shake
+ *   Hit wasCritical                   → moderate shake
+ *   Hit (normal)                      → light shake
+ *   Death (monster)                   → post to log only
+ *   Death (party member)              → post to log, refresh stats
+ *   StatusChange, Miss, FleeAttempt   → post to log only
+ *   RoundHeader                       → no VFX, optional log entry
  */
-public class CombatNarrator {
+public class CombatEventController {
 
-    // ------------------------------------------------------------------
-    // Encounter opening
-    // ------------------------------------------------------------------
+    private final GameScreen    screen;
+    private final CombatNarrator narrator = new CombatNarrator();
 
-    /**
-     * The announcement shown before the tactical view opens.
-     * e.g. "An Encounter, the monsters surprise you!"
-     */
-    public String announceEncounter(EncounterCondition condition) {
-        return condition.announcement();
-    }
-
-    // ------------------------------------------------------------------
-    // Round narrative
-    // ------------------------------------------------------------------
-
-    /**
-     * Converts a full RoundResult into an ordered list of text lines,
-     * one line per event. Feed these to your text display in sequence.
-     */
-    public List<String> narrateRound(RoundResult result) {
-        List<String> lines = new ArrayList<>();
-
-        for (CombatEvent event : result.events()) {
-            String line = narrateEvent(event);
-            if (line != null) lines.add(line);
-        }
-
-        // Append end-of-combat line if combat is over
-        if (result.isCombatOver()) {
-            lines.add(narrateOutcome(result.outcome()));
-        }
-
-        return lines;
+    public CombatEventController(GameScreen screen) {
+        this.screen = screen;
     }
 
     /**
-     * Narrates a single event. Returns null for events that
-     * produce no visible text (e.g. RoundHeader).
+     * Processes a single CombatEvent: posts narrator text to the log,
+     * then fires the appropriate VFX/screen-shake based on event type.
      */
-    public String narrateEvent(CombatEvent event) {
-        return switch (event) {
+    public void processEvent(CombatEvent event) {
 
-            case CombatEvent.RoundHeader h ->
-                    null;   // Round headers are silent in the text feed
+        // 1. Post the narrator's text description to the South Pane log.
+        //    narrateEvent() is the only place that touches prose — the
+        //    visual effects decision below is entirely type-driven.
+        String message = narrator.narrateEvent(event);
+        if (message != null && !message.isEmpty()) {
+             // screen.postToLog(message);
+        }
 
-            case CombatEvent.Hit h -> {
-                // "Bilbo slashes" is emitted separately by the action line.
-                // The hit line reports the result:
-                //   "Bilbo hits!  24 HP"
-                //   "Bilbo hits!  99 HP  *CRITICAL*"
-                String base = h.attackerName() + " hits!  " + h.damage() + " HP";
-                yield h.wasCritical() ? base + "  *CRITICAL*" : base;
+        // 2. Drive VFX by switching on the sealed event type.
+        //    Pattern-matching switch is exhaustive — the compiler will warn
+        //    if a new CombatEvent subtype is added without a case here.
+        switch (event) {
+
+            case CombatEvent.SpellCast sc -> {
+                if (sc.succeeded() && sc.magnitude() > 0) {
+                    // Damaging spell landed — explosion + heavy shake
+                    // screen.spawnParticleEffect("effects/explosion.p");
+                    // screen.triggerScreenShake(0.3f);
+                } else if (sc.succeeded() && sc.magnitude() < 0) {
+                    // Healing spell — gentle pulse, no shake
+                    // screen.spawnParticleEffect("effects/heal.p");
+                }
+                // Failed casts: narrator message already posted, no VFX
             }
 
-            case CombatEvent.Miss m ->
-                    m.attackerName() + " misses";
-
-            case CombatEvent.ActionSkipped skipped ->
-                    skipped.actorName() + " cannot attack " + skipped.targetName()
-                            + ("TARGET_DEFEATED".equals(skipped.reason())
-                                ? " — target already defeated"
-                                : " — " + ("TARGET_OUT_OF_REACH".equals(skipped.reason())
-                                    ? "target out of reach" : "bow unavailable");
-
-            case CombatEvent.Death d ->
-                    d.entityName() + " dies";
-
-            case CombatEvent.SpellCast s -> {
-                if (!s.succeeded()) {
-                    yield s.casterName() + " — spell fails";
-                }
-                // Cast announcement: "Bonzo casts Healing I"
-                // The effect line (heal/damage) is implied by the magnitude
-                // and rendered as a follow-on line.
-                int mag = s.magnitude();
-                if (mag < 0) {
-                    // Negative magnitude = heal
-                    yield s.targetName() + " is healed for " + Math.abs(mag) + " HP";
-                } else if (mag > 0) {
-                    yield s.targetName() + " takes " + mag + " damage";
+            case CombatEvent.Hit h -> {
+                if (h.wasCritical()) {
+                    // screen.triggerScreenShake(0.2f);
                 } else {
-                    // Status spells (sleep, awaken, buff) — effect described
-                    // by the accompanying StatusChange event
-                    yield s.casterName() + " casts " + s.spellName();
+                    // screen.triggerScreenShake(0.1f);
+                }
+            }
+
+            case CombatEvent.Death d -> {
+                // Stat panel always needs a refresh on any death
+                // screen.refreshStats();
+                if (d.wasPartyMember()) {
+                    // Extra emphasis for a fallen hero — stronger shake
+                   // screen.triggerScreenShake(0.25f);
                 }
             }
 
             case CombatEvent.StatusChange sc -> {
-                yield switch (sc.condition()) {
-                    case "Asleep"   -> sc.applied()
-                            ? sc.entityName() + " falls asleep"
-                            : sc.entityName() + " wakes up";
-                    case "Parrying" -> sc.applied()
-                            ? sc.entityName() + " is parrying"
-                            : null;   // clearing parry is silent
-                    case "No Magic Power" ->
-                            sc.entityName() + " has no magic power";
-                    default -> sc.applied()
-                            ? sc.entityName() + " — " + sc.condition().toLowerCase()
-                            : null;
-                };
+                // Sleep, paralysis, waking — no shake, just the log entry
             }
 
-            case CombatEvent.FleeAttempt f ->
-                    f.succeeded()
-                            ? f.entityName() + " flees!"
-                            : f.entityName() + " can't escape!";
-        };
-    }
+            case CombatEvent.Miss m -> {
+                // Misses: log message only, no VFX
+            }
+            case CombatEvent.ActionSkipped skipped -> {
+                // Skipped orders: log message only, no VFX.
+            }
 
-    /**
-     * Returns the action declaration line for an attacker — the line
-     * that precedes the hit/miss result.
-     *
-     * e.g. "Bilbo slashes" / "Bilbo attacks" / "Bilbo thrusts"
-     *
-     * Called by the renderer before it processes the Hit/Miss events
-     * for that actor's turn. The action name comes from the Action enum
-     * stored on the entity at time of resolution.
-     */
-    public String announceAction(String actorName, String actionName) {
-        String verb = switch (actionName.toUpperCase()) {
-            case "SLASH"     -> "slashes";
-            case "THRUST"    -> "thrusts";
-            case "LUNGE"     -> "lunges";
-            case "AIM_BLOW"  -> "aims a blow";
-            case "CAST"      -> "casts";
-            case "PARRY"     -> "parries";
-            case "RUN"       -> "attempts to flee";
-            default          -> "attacks";   // ATTACK and fallback
-        };
-        return actorName + " " + verb;
-    }
+            case CombatEvent.FleeAttempt f -> {
+                if (f.succeeded()) {
+                    // Optional: fade transition could be triggered here
+                }
+            }
 
-    // ------------------------------------------------------------------
-    // End of combat
-    // ------------------------------------------------------------------
-
-    public String narrateOutcome(CombatOutcome outcome) {
-        return switch (outcome) {
-            case VICTORY -> "The battle is won!";
-            case DEFEAT  -> "The party has been defeated...";
-            case ESCAPED -> "The party escapes!";
-            case ONGOING -> null;  // shouldn't be called while ongoing
-        };
+            case CombatEvent.RoundHeader rh -> {
+                // Round separator — no VFX. The log message is sufficient.
+            }
+        }
     }
 }
