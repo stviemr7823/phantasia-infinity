@@ -208,6 +208,33 @@ class CombatRoundV5Test {
         assertEquals(100, middle.getHp());
     }
 
+
+    @Test
+    void laterAttackSkippedWhenEarlierAttackerDefeatsTarget() {
+        PlayerRuntimeV5 first = player("First", 400, 0);
+        PlayerRuntimeV5 second = player("Second", 400, 0);
+        Monster target = monster("Orc", 1);
+        Monster remaining = monster("Orc", 100);
+        CombatRoundV5 combat = new CombatRoundV5(
+                List.of(first, second), List.of(target, remaining),
+                java.util.Map.of(), java.util.Map.of(),
+                actor -> actor == first ? 30 : actor == second ? 20 : 10,
+                (attacker, defender) -> true);
+        RoundResult result = combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.attack(first, target,
+                        com.phantasia.core.model.CombatRank.FRONT),
+                CombatRoundV5.PlayerOrder.attack(second, target,
+                        com.phantasia.core.model.CombatRank.FRONT)));
+        assertEquals(0, target.getHp());
+        assertEquals(100, remaining.getHp());
+        assertEquals(1, result.events().stream().filter(e ->
+                e instanceof CombatEvent.ActionSkipped skipped
+                && skipped.actorName().equals("Second")
+                && skipped.reason().equals("TARGET_DEFEATED")).count());
+        assertEquals(1, result.events().stream().filter(e ->
+                e instanceof CombatEvent.Death d && !d.wasPartyMember()).count());
+    }
+
     @Test
     void rejectsDuplicateCombatantsAndUnsupportedActions() {
         PlayerRuntimeV5 character = player("Sage", 50, 5);
