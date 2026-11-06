@@ -585,6 +585,60 @@ class CombatRoundV5Test {
                 e instanceof CombatEvent.Death death && !death.wasPartyMember()).count());
     }
 
+
+    @Test
+    void aimedBlowDelaysAttackAndUsesDedicatedHitRoll() {
+        PlayerRuntimeV5 fighter = player("Fighter", 400, 0);
+        Monster target = monster("Orc", 200);
+        java.util.concurrent.atomic.AtomicInteger ordinaryRolls = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger aimedRolls = new java.util.concurrent.atomic.AtomicInteger();
+        CombatRoundV5 combat = new CombatRoundV5(
+                List.of(fighter), List.of(target), java.util.Map.of(), java.util.Map.of(),
+                actor -> actor == fighter ? 10 : 9,
+                (actor, enemy) -> { ordinaryRolls.incrementAndGet(); return false; },
+                (enemy, defender) -> false,
+                enemy -> 0,
+                (actor, enemy) -> false,
+                (actor, enemy) -> { aimedRolls.incrementAndGet(); return true; });
+
+        RoundResult result = combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.aimBlow(fighter, target,
+                        com.phantasia.core.model.CombatRank.FRONT)));
+        assertTrue(result.events().getFirst() instanceof CombatEvent.RoundHeader header
+                && header.initiativeOrder().equals(List.of("Orc", "Fighter")),
+                "Three-point initiative penalty places the aimed attack after the monster");
+        assertEquals(1, aimedRolls.get());
+        assertEquals(0, ordinaryRolls.get());
+        assertEquals(1, result.events().stream().filter(event ->
+                event instanceof CombatEvent.Hit hit
+                && hit.attackerName().equals("Fighter")
+                && hit.targetName().equals("Orc")).count());
+        assertEquals(0, fighter.mp());
+    }
+
+    @Test
+    void aimedBlowKeepsMeleeReachAndDamageCap() {
+        PlayerRuntimeV5 fighter = player("Fighter", 400, 0);
+        Monster front = monster("Front", 200);
+        Monster back = monster("Back", 200);
+        CombatRoundV5 combat = new CombatRoundV5(
+                List.of(fighter), List.of(front, back),
+                java.util.Map.of(),
+                java.util.Map.of(front, com.phantasia.core.model.CombatRank.FRONT,
+                        back, com.phantasia.core.model.CombatRank.BACK));
+        assertThrows(IllegalArgumentException.class, () -> combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.aimBlow(fighter, back,
+                        com.phantasia.core.model.CombatRank.FRONT))));
+        assertEquals(200, back.getHp());
+        assertEquals(1, CombatRoundV5.aimedDamage(1));
+        assertEquals(5, CombatRoundV5.aimedDamage(4));
+        assertEquals(99, CombatRoundV5.aimedDamage(99));
+        assertThrows(IllegalArgumentException.class, () -> CombatRoundV5.aimedDamage(-1));
+        int ordinary = FormulaEngine.playerHitChance(fighter, front);
+        assertEquals(Math.min(95, ordinary + 10),
+                CombatRoundV5.aimBlowHitChance(fighter, front));
+    }
+
     @Test
     void rejectsDuplicateCombatantsAndUnsupportedActions() {
         PlayerRuntimeV5 character = player("Sage", 50, 5);
