@@ -239,17 +239,30 @@ public final class CombatRoundV5 {
                 throw new IllegalArgumentException("Duplicate combatant");
     }
 
-    public RoundResult runRound(List<PlayerOrder> orders) {
+    /** Stable, unmodifiable party order for a six-row planning interface. */
+    public List<PlayerRuntimeV5> partyMembers() {
+        return party;
+    }
+
+    /** Validate the same orders the resolver will accept, without changing combat state. */
+    public void validateOrders(List<PlayerOrder> orders) {
         Objects.requireNonNull(orders, "orders");
         if (outcome() != CombatOutcome.ONGOING)
-            throw new IllegalStateException("Cannot run another round after combat has ended");
-        Map<PlayerRuntimeV5, PlayerOrder> planned = new IdentityHashMap<>();
+            throw new IllegalStateException("Cannot plan another round after combat has ended");
+        Map<PlayerRuntimeV5, PlayerOrder> seen = new IdentityHashMap<>();
         for (PlayerOrder order : orders) {
             Objects.requireNonNull(order, "order");
-            if (!containsIdentity(party, order.actor()) || planned.put(order.actor(), order) != null)
+            if (!containsIdentity(party, order.actor()) || seen.put(order.actor(), order) != null)
                 throw new IllegalArgumentException("Unknown or duplicate player order");
             validateOrder(order);
         }
+    }
+
+    public RoundResult runRound(List<PlayerOrder> orders) {
+        validateOrders(orders);
+        Map<PlayerRuntimeV5, PlayerOrder> planned = new IdentityHashMap<>();
+        for (PlayerOrder order : orders)
+            planned.put(order.actor(), order);
 
         // Parry is a preplanned stance, effective for the whole round even
         // when a monster wins initiative. It is not persisted in player state.
