@@ -378,8 +378,15 @@ public final class CombatRoundV5 {
             default -> throw new IllegalStateException("Order validation missed effect");
         };
         if (!result.cast()) {
+            boolean hasLivingTarget = switch (spell.getEffectType()) {
+                case DAMAGE, SLEEP -> enemyTargets(order).stream().anyMatch(Monster::isAlive);
+                case HEAL, AWAKEN -> allyTargets(order).stream().anyMatch(PlayerRuntimeV5::isAlive);
+                default -> false;
+            };
+            String reason = !caster.isAlive() ? "Caster unable to act"
+                    : !hasLivingTarget ? "No valid target" : "Insufficient MP";
             events.add(new CombatEvent.SpellCast(caster.name(), spell.getName(),
-                    "No valid target or insufficient MP", 0, false));
+                    reason, 0, false));
             return;
         }
         for (String missedTarget : result.missedTargets())
