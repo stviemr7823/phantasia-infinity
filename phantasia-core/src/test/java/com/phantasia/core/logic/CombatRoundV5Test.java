@@ -193,16 +193,15 @@ class CombatRoundV5Test {
     @Test
     void newlyShieldedMeleeTargetSkipsWithReachReason() {
         PlayerRuntimeV5 attacker = player("Fighter", 400, 0);
-        Monster front = monster("Front", 0);
+        Monster front = monster("Front", 100);
         Monster middle = monster("Middle", 100);
         CombatRoundV5 combat = new CombatRoundV5(
                 List.of(attacker), List.of(front, middle), java.util.Map.of(),
                 java.util.Map.of(front, com.phantasia.core.model.CombatRank.FRONT,
                         middle, com.phantasia.core.model.CombatRank.MIDDLE));
 
-        // Middle is not exposed while a living front enemy remains. A
-        // previously valid attack becomes invalid if the front revives or
-        // rank protection changes; direct validation rejects such orders.
+        // Middle is protected by the living front rank. Planning rejects
+        // attacks that are already out of reach before the round begins.
         assertThrows(IllegalArgumentException.class, () -> combat.runRound(
                 List.of(CombatRoundV5.PlayerOrder.attack(attacker, middle,
                         com.phantasia.core.model.CombatRank.FRONT))));
