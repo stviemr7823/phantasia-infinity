@@ -44,6 +44,49 @@ public final class CombatOrderPlannerV5 {
         return selections.get(actor);
     }
 
+    /** State of a single party row in the order-planning view. */
+    public enum RowStatus { NEEDS_ORDER, READY, NEEDS_REVIEW, INACTIVE }
+
+    /** Immutable, renderer-neutral snapshot of one character's current selection. */
+    public record OrderRow(PlayerRuntimeV5 actor, CombatRoundV5.PlayerOrder order,
+                           RowStatus status) {}
+
+    /** One row per party member, in party order. No combat actions are performed. */
+    public List<OrderRow> orderRows() {
+        List<OrderRow> rows = new ArrayList<>();
+        for (PlayerRuntimeV5 member : party) {
+            CombatRoundV5.PlayerOrder order = selections.get(member);
+            RowStatus status;
+            if (!member.isAlive()) {
+                status = RowStatus.INACTIVE;
+            } else if (order == null) {
+                status = RowStatus.NEEDS_ORDER;
+            } else if (order.enemyTarget() != null && !order.enemyTarget().isAlive()) {
+                status = RowStatus.NEEDS_REVIEW;
+            } else {
+                try {
+                    combat.validateOrders(List.of(order));
+                    status = RowStatus.READY;
+                } catch (IllegalArgumentException exception) {
+                    status = RowStatus.NEEDS_REVIEW;
+                }
+            }
+            rows.add(new OrderRow(member, order, status));
+        }
+        return List.copyOf(rows);
+    }
+
+    /** Confirmation availability for a full, currently valid plan. */
+    public boolean canConfirm() {
+        if (combat.outcome() != CombatOutcome.ONGOING) return false;
+        for (OrderRow row : orderRows()) {
+            if (row.status() == RowStatus.NEEDS_ORDER
+                    || row.status() == RowStatus.NEEDS_REVIEW)
+                return false;
+        }
+        return true;
+    }
+
     /** Preserves party-row order; omits unassigned slots. */
     public List<CombatRoundV5.PlayerOrder> selectedOrders() {
         List<CombatRoundV5.PlayerOrder> result = new ArrayList<>();
