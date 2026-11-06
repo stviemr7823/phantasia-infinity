@@ -17,6 +17,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.BiPredicate;
+import java.util.function.ToIntFunction;
 
 /**
  * Headless, incremental v5 round coordinator. Players use typed v5 storage,
@@ -63,6 +65,8 @@ public final class CombatRoundV5 {
     private final Map<PlayerRuntimeV5, CombatRank> ranks = new IdentityHashMap<>();
     private final Map<Monster, CombatRank> enemyRanks = new IdentityHashMap<>();
     private int roundNumber;
+    private final ToIntFunction<Object> initiativeRoll;
+    private final BiPredicate<PlayerRuntimeV5, Monster> playerHitRoll;
 
     /** Compatibility constructor: all party members initially occupy the front rank. */
     public CombatRoundV5(List<PlayerRuntimeV5> party, List<Monster> enemies) {
@@ -85,6 +89,18 @@ public final class CombatRoundV5 {
     public CombatRoundV5(List<PlayerRuntimeV5> party, List<Monster> enemies,
                          Map<PlayerRuntimeV5, CombatRank> assignedRanks,
                          Map<Monster, CombatRank> assignedEnemyRanks) {
+        this(party, enemies, assignedRanks, assignedEnemyRanks,
+                ignored -> FormulaEngine.rollInitiative(), FormulaEngine::playerRollToHit);
+    }
+
+    /** Package-private deterministic seam for headless round tests only. */
+    CombatRoundV5(List<PlayerRuntimeV5> party, List<Monster> enemies,
+                  Map<PlayerRuntimeV5, CombatRank> assignedRanks,
+                  Map<Monster, CombatRank> assignedEnemyRanks,
+                  ToIntFunction<Object> initiativeRoll,
+                  BiPredicate<PlayerRuntimeV5, Monster> playerHitRoll) {
+        this.initiativeRoll = Objects.requireNonNull(initiativeRoll, "initiativeRoll");
+        this.playerHitRoll = Objects.requireNonNull(playerHitRoll, "playerHitRoll");
         this.party = List.copyOf(Objects.requireNonNull(party, "party"));
         this.enemies = List.copyOf(Objects.requireNonNull(enemies, "enemies"));
         requireUnique(this.party);
@@ -173,7 +189,7 @@ public final class CombatRoundV5 {
         for (PlayerRuntimeV5 player : party) if (player.isAlive()) actors.add(player);
         for (Monster enemy : enemies) if (enemy.isAlive()) actors.add(enemy);
         Map<Object, Integer> initiative = new IdentityHashMap<>();
-        for (Object actor : actors) initiative.put(actor, FormulaEngine.rollInitiative());
+        for (Object actor : actors) initiative.put(actor, initiativeRoll.applyAsInt(actor));
         actors.sort((left, right) -> Integer.compare(
                 initiative.get(right), initiative.get(left)));
         events.add(new CombatEvent.RoundHeader(roundNumber,
@@ -288,7 +304,7 @@ public final class CombatRoundV5 {
                     "TARGET_OUT_OF_REACH"));
             return;
         }
-        if (!FormulaEngine.playerRollToHit(attacker, target)) {
+        if (!playerHitRoll.test(attacker, target)) {
             events.add(new CombatEvent.Miss(attacker.name(), target.getName()));
             return;
         }
