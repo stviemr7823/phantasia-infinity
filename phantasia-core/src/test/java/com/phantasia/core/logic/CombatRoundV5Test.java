@@ -352,6 +352,39 @@ class CombatRoundV5Test {
     }
 
     @Test
+    void sleepCastAnnouncesBeforeEitherResistanceOrStatusChange() {
+        PlayerRuntimeV5 caster = player("Sage", 400, 20);
+        Monster enemy = monster("Orc", 20);
+        DataCore data = new DataCore();
+        data.setName("Sleep");
+        data.setStat(DataLayout.SPELL_MP_COST, 3);
+        data.setStat(DataLayout.SPELL_TARGET, Spell.TargetType.SINGLE_ENEMY.ordinal());
+        data.setStat(DataLayout.SPELL_EFFECT_TYPE, Spell.EffectType.SLEEP.ordinal());
+        CombatRoundV5 combat = new CombatRoundV5(
+                List.of(caster), List.of(enemy), java.util.Map.of(), java.util.Map.of(),
+                actor -> actor == caster ? 30 : 10, (actor, target) -> true);
+
+        RoundResult result = combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.cast(caster, new Spell(data), enemy, null)));
+
+        assertEquals(17, caster.mp(), "Sleep consumes MP exactly once");
+        assertTrue(result.events().get(0) instanceof CombatEvent.RoundHeader);
+        assertTrue(result.events().get(1) instanceof CombatEvent.SpellCast cast
+                && cast.succeeded() && cast.spellName().equals("Sleep"));
+        boolean resisted = result.events().get(2) instanceof CombatEvent.Miss miss
+                && miss.attackerName().equals("Sage")
+                && miss.targetName().equals("Orc");
+        boolean applied = result.events().get(2) instanceof CombatEvent.StatusChange change
+                && change.entityName().equals("Orc")
+                && change.applied() && change.condition().equals("Asleep");
+        assertTrue(resisted || applied, "Each target must resolve as resisted or asleep");
+        assertEquals(applied, enemy.isAsleep());
+        assertEquals(1, result.events().stream()
+                .filter(e -> e instanceof CombatEvent.SpellCast).count());
+        assertEquals(20, enemy.getHp(), "Sleep cannot deal physical damage");
+    }
+
+    @Test
     void rejectsDuplicateCombatantsAndUnsupportedActions() {
         PlayerRuntimeV5 character = player("Sage", 50, 5);
         Monster enemy = monster("Orc", 10);
