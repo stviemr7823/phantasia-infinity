@@ -262,6 +262,42 @@ class CombatRoundV5Test {
                 "An already-dead monster with the same name must not be killed again");
     }
 
+
+    @Test
+    void failedCastReportsInsufficientMpWithoutChangingResources() {
+        PlayerRuntimeV5 caster = player("Sage", 400, 2);
+        Monster target = monster("Orc", 40);
+        CombatRoundV5 combat = new CombatRoundV5(List.of(caster), List.of(target));
+        RoundResult result = combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.cast(caster, areaDamage(5, 20), target, null)));
+        assertEquals(2, caster.mp());
+        assertEquals(40, target.getHp());
+        assertTrue(result.events().stream().anyMatch(e ->
+                e instanceof CombatEvent.SpellCast cast
+                && !cast.succeeded()
+                && cast.targetName().equals("Insufficient MP")));
+    }
+
+    @Test
+    void failedCastReportsNoLivingTargetWithoutChargingMp() {
+        PlayerRuntimeV5 caster = player("Sage", 400, 10);
+        Monster defeated = monster("Orc", 0);
+        Monster remaining = monster("Other", 40);
+        CombatRoundV5 combat = new CombatRoundV5(List.of(caster),
+                List.of(defeated, remaining), java.util.Map.of(),
+                java.util.Map.of(defeated, com.phantasia.core.model.CombatRank.FRONT,
+                        remaining, com.phantasia.core.model.CombatRank.BACK));
+        RoundResult result = combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.cast(caster, areaDamage(5, 20),
+                        defeated, null)));
+        assertEquals(10, caster.mp());
+        assertEquals(40, remaining.getHp());
+        assertTrue(result.events().stream().anyMatch(e ->
+                e instanceof CombatEvent.SpellCast cast
+                && !cast.succeeded()
+                && cast.targetName().equals("No valid target")));
+    }
+
     @Test
     void rejectsDuplicateCombatantsAndUnsupportedActions() {
         PlayerRuntimeV5 character = player("Sage", 50, 5);
