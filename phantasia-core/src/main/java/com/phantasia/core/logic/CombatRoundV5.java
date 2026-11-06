@@ -277,8 +277,17 @@ public final class CombatRoundV5 {
     private void resolveAttack(PlayerOrder order, List<CombatEvent> events) {
         Monster target = order.enemyTarget();
         PlayerRuntimeV5 attacker = order.actor();
-        if (!target.isAlive() || !(order.action() == Action.LUNGE
-                ? canLungeReach(attacker, target) : canMeleeReach(attacker, target))) return;
+        if (!target.isAlive()) {
+            events.add(new CombatEvent.ActionSkipped(attacker.name(), target.getName(),
+                    "TARGET_DEFEATED"));
+            return;
+        }
+        if (!(order.action() == Action.LUNGE
+                ? canLungeReach(attacker, target) : canMeleeReach(attacker, target))) {
+            events.add(new CombatEvent.ActionSkipped(attacker.name(), target.getName(),
+                    "TARGET_OUT_OF_REACH"));
+            return;
+        }
         if (!FormulaEngine.playerRollToHit(attacker, target)) {
             events.add(new CombatEvent.Miss(attacker.name(), target.getName()));
             return;
@@ -312,7 +321,16 @@ public final class CombatRoundV5 {
     private void resolveRanged(PlayerOrder order, List<CombatEvent> events) {
         PlayerRuntimeV5 attacker = order.actor();
         Monster target = order.enemyTarget();
-        if (!canRangedReach(attacker, target)) return;
+        if (!target.isAlive()) {
+            events.add(new CombatEvent.ActionSkipped(attacker.name(), target.getName(),
+                    "TARGET_DEFEATED"));
+            return;
+        }
+        if (!canRangedReach(attacker, target)) {
+            events.add(new CombatEvent.ActionSkipped(attacker.name(), target.getName(),
+                    "BOW_UNAVAILABLE"));
+            return;
+        }
         if (!FormulaEngine.playerRollToHit(attacker, target)) {
             events.add(new CombatEvent.Miss(attacker.name(), target.getName()));
             return;
