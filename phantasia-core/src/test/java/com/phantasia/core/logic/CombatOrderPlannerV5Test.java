@@ -91,6 +91,76 @@ class CombatOrderPlannerV5Test {
     }
 
     @Test
+    void statusRowsTrackMissingReadyAndStaleSelectionsWithoutRunningCombat() {
+        PlayerRuntimeV5 first = member("First");
+        PlayerRuntimeV5 second = member("Second");
+        Monster target = enemy("Orc", 50);
+        Monster survivor = enemy("Survivor", 100);
+        CombatRoundV5 combat = new CombatRoundV5(
+                List.of(first, second), List.of(target, survivor));
+        CombatOrderPlannerV5 planner = new CombatOrderPlannerV5(combat);
+
+        assertEquals(List.of(CombatOrderPlannerV5.RowStatus.NEEDS_ORDER,
+                        CombatOrderPlannerV5.RowStatus.NEEDS_ORDER),
+                planner.orderRows().stream().map(CombatOrderPlannerV5.OrderRow::status).toList());
+        assertFalse(planner.canConfirm());
+
+        planner.setOrder(CombatRoundV5.PlayerOrder.attack(first, target, CombatRank.FRONT));
+        planner.setOrder(CombatRoundV5.PlayerOrder.parry(second));
+        assertEquals(CombatOrderPlannerV5.RowStatus.READY, planner.orderRows().get(0).status());
+        assertEquals(CombatOrderPlannerV5.RowStatus.READY, planner.orderRows().get(1).status());
+        assertTrue(planner.canConfirm());
+
+        target.applyDamage(50);
+        assertEquals(CombatOrderPlannerV5.RowStatus.NEEDS_REVIEW,
+                planner.orderRows().get(0).status());
+        assertFalse(planner.canConfirm());
+        assertEquals(CombatOrderPlannerV5.RowStatus.READY, planner.orderRows().get(1).status());
+        planner.setOrder(CombatRoundV5.PlayerOrder.attack(first, survivor, CombatRank.FRONT));
+        assertTrue(planner.canConfirm());
+        assertEquals(20, first.mp());
+        assertEquals(100, survivor.getHp());
+        assertSame(first, planner.orderRows().get(0).actor());
+    }
+
+    @Test
+    void invalidReachNeedsReviewAndEndedCombatHasInactiveRows() {
+        PlayerRuntimeV5 fighter = member("Fighter");
+        Monster front = enemy("Front", 100);
+        Monster rear = enemy("Rear", 100);
+        CombatRoundV5 combat = new CombatRoundV5(
+                List.of(fighter), List.of(front, rear), Map.of(),
+                Map.of(front, CombatRank.FRONT, rear, CombatRank.BACK),
+                actor -> actor == fighter ? 30 : 10,
+                (actor, target) -> true,
+                (monster, defender) -> false,
+                monster -> 0);
+        CombatOrderPlannerV5 planner = new CombatOrderPlannerV5(combat);
+        planner.setOrder(CombatRoundV5.PlayerOrder.attack(fighter, rear, CombatRank.FRONT));
+        assertEquals(CombatOrderPlannerV5.RowStatus.NEEDS_REVIEW,
+                planner.orderRows().getFirst().status());
+        assertFalse(planner.canConfirm());
+        planner.setOrder(CombatRoundV5.PlayerOrder.parry(fighter));
+        assertTrue(planner.canConfirm());
+
+        // A separate completed encounter still yields a readable status snapshot.
+        PlayerRuntimeV5 winner = member("Winner");
+        Monster weak = enemy("Weak", 1);
+        CombatRoundV5 shortCombat = new CombatRoundV5(
+                List.of(winner), List.of(weak), Map.of(), Map.of(),
+                actor -> actor == winner ? 30 : 10,
+                (actor, target) -> true,
+                (monster, defender) -> false,
+                monster -> 0);
+        CombatOrderPlannerV5 finished = new CombatOrderPlannerV5(shortCombat);
+        finished.setOrder(CombatRoundV5.PlayerOrder.attack(winner, weak, CombatRank.FRONT));
+        assertEquals(CombatOutcome.VICTORY, finished.confirmRound().outcome());
+        assertEquals(CombatOrderPlannerV5.RowStatus.INACTIVE,
+                finished.orderRows().getFirst().status());
+        assertFalse(finished.canConfirm());
+    }
+
+    @Test
     void outsidersCannotEditOrClearPartyRows() {
         PlayerRuntimeV5 a = member("A");
         PlayerRuntimeV5 outsider = member("Outsider");
