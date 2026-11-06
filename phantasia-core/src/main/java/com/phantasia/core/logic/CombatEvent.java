@@ -16,6 +16,7 @@ import java.util.List;
 public sealed interface CombatEvent permits
         CombatEvent.Hit,
         CombatEvent.Miss,
+        CombatEvent.ActionSkipped,
         CombatEvent.Death,
         CombatEvent.SpellCast,
         CombatEvent.StatusChange,
@@ -39,6 +40,16 @@ public sealed interface CombatEvent permits
     record Miss(
             String attackerName,
             String targetName
+    ) implements CombatEvent {}
+
+    // ------------------------------------------------------------------
+    // An ordered attack was not attempted because the battlefield changed.
+    // Distinct from Miss: no hit roll happened.
+    // ------------------------------------------------------------------
+    record ActionSkipped(
+            String actorName,
+            String targetName,
+            String reason
     ) implements CombatEvent {}
 
     // ------------------------------------------------------------------
