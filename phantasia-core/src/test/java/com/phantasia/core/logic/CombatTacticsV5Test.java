@@ -67,6 +67,61 @@ class CombatTacticsV5Test {
     }
 
     @Test
+    void threeMemberFormationExposesRearEnemyOnlyAfterFrontFalls() {
+        PlayerRuntimeV5 guard = player("Guard");
+        PlayerRuntimeV5 striker = player("Striker");
+        PlayerRuntimeV5 mage = player("Mage");
+        Monster shield = monster("Shield");
+        shield.applyDamage(199); // one HP: a landed strike defeats this front defender
+        Monster rear = monster("Rear");
+        CombatRoundV5 combat = new CombatRoundV5(
+                List.of(guard, striker, mage), List.of(shield, rear),
+                Map.of(guard, CombatRank.FRONT, striker, CombatRank.MIDDLE,
+                        mage, CombatRank.BACK),
+                Map.of(shield, CombatRank.FRONT, rear, CombatRank.BACK),
+                actor -> actor == striker ? 30 : actor == guard ? 20 : 10,
+                (actor, target) -> true,
+                (monster, defender) -> false,
+                monster -> 0);
+
+        assertFalse(combat.canMeleeReach(striker, rear));
+        assertFalse(combat.canMeleeReach(mage, shield));
+        assertThrows(IllegalArgumentException.class, () -> combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.attack(striker, rear, CombatRank.MIDDLE))));
+        assertThrows(IllegalArgumentException.class, () -> combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.attack(mage, shield, CombatRank.BACK))));
+
+        RoundResult first = combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.parry(guard),
+                CombatRoundV5.PlayerOrder.thrust(striker, shield, CombatRank.MIDDLE),
+                CombatRoundV5.PlayerOrder.idle(mage)));
+        assertEquals(1, first.roundNumber(), "Rejected plans must not advance the round");
+        assertEquals(0, shield.getHp());
+        assertEquals(200, rear.getHp());
+        assertTrue(first.events().stream().anyMatch(event ->
+                event instanceof CombatEvent.Death death
+                && death.entityName().equals("Shield")));
+        assertTrue(combat.canMeleeReach(striker, rear),
+                "Rear rank becomes exposed after the front defender dies");
+        assertFalse(combat.canMeleeReach(mage, rear),
+                "Back-rank party members still cannot use ordinary melee");
+
+        RoundResult second = combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.parry(guard),
+                CombatRoundV5.PlayerOrder.attack(striker, rear, CombatRank.MIDDLE),
+                CombatRoundV5.PlayerOrder.idle(mage)));
+        assertEquals(2, second.roundNumber());
+        assertTrue(second.events().stream().anyMatch(event ->
+                event instanceof CombatEvent.Hit hit
+                && hit.attackerName().equals("Striker")
+                && hit.targetName().equals("Rear")));
+        assertTrue(rear.getHp() < 200);
+        assertEquals(100, guard.mp());
+        assertEquals(100, striker.mp());
+        assertEquals(100, mage.mp());
+    }
+
+    @Test
     void areaSpellCanSelectOneRankOrBothAndEveryTargetCanMiss() {
         PlayerRuntimeV5 mage = player("Mage");
         Monster front = monster("Front");
