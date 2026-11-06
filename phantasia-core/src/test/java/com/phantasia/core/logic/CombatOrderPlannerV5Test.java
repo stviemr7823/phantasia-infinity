@@ -41,7 +41,6 @@ class CombatOrderPlannerV5Test {
         for (int i = 0; i < 5; i++)
             planner.setOrder(CombatRoundV5.PlayerOrder.idle(party.get(i)));
         assertThrows(IllegalStateException.class, planner::confirmRound);
-        assertEquals(0, combatRoundNumberWithoutAdvancing(combat, planner));
 
         planner.setOrder(CombatRoundV5.PlayerOrder.parry(party.get(0)));
         planner.setOrder(CombatRoundV5.PlayerOrder.idle(party.get(5)));
@@ -51,13 +50,6 @@ class CombatOrderPlannerV5Test {
         assertEquals(2, planner.confirmRound().roundNumber(),
                 "Previous selections may be confirmed again, but never auto-run");
         assertEquals(200, orc.getHp());
-    }
-
-    private static int combatRoundNumberWithoutAdvancing(CombatRoundV5 combat,
-            CombatOrderPlannerV5 planner) {
-        // Validated orders must not execute merely by being inspected.
-        planner.selectedOrders();
-        return 0; // first successful confirmation must still report round 1
     }
 
     @Test
