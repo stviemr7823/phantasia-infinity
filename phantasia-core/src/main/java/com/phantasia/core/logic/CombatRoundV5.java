@@ -25,7 +25,7 @@ import java.util.function.ToIntFunction;
  * while monsters temporarily retain their existing typed v4 wrapper.
  * This does not replace the production v4 CombatManager.
  *
- * ATTACK, LUNGE, RANGED_ATTACK, CAST and NONE are supported player orders.
+ * ATTACK, LUNGE, RANGED_ATTACK, PARRY, CAST and NONE are supported player orders.
  * Monster AI is a simple attack against the first living party member.
  */
 public final class CombatRoundV5 {
@@ -37,6 +37,7 @@ public final class CombatRoundV5 {
             Objects.requireNonNull(action, "action");
             if (action != Action.ATTACK && action != Action.LUNGE
                     && action != Action.RANGED_ATTACK
+                    && action != Action.PARRY
                     && action != Action.CAST && action != Action.NONE)
                 throw new IllegalArgumentException("Unsupported v5 order: " + action);
         }
@@ -54,6 +55,10 @@ public final class CombatRoundV5 {
         public static PlayerOrder cast(PlayerRuntimeV5 actor, Spell spell,
                                        Monster enemy, PlayerRuntimeV5 ally) {
             return new PlayerOrder(actor, Action.CAST, enemy, ally, spell, CombatRank.BACK);
+        }
+        /** Preplanned defense against monster physical damage for one round. */
+        public static PlayerOrder parry(PlayerRuntimeV5 actor) {
+            return new PlayerOrder(actor, Action.PARRY, null, null, null, null);
         }
         public static PlayerOrder idle(PlayerRuntimeV5 actor) {
             return new PlayerOrder(actor, Action.NONE, null, null, null, CombatRank.FRONT);
@@ -182,6 +187,14 @@ public final class CombatRoundV5 {
             validateOrder(order);
         }
 
+        // Parry is a preplanned stance, effective for the whole round even
+        // when a monster wins initiative. It is not persisted in player state.
+        Set<PlayerRuntimeV5> parrying = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (PlayerOrder order : planned.values())
+            if (order.action() == Action.PARRY && order.actor().isAlive()
+                    && !order.actor().isAsleep())
+                parrying.add(order.actor());
+
         // Validate every order before incrementing the round or spending resources.
         roundNumber++;
         List<CombatEvent> events = new ArrayList<>();
@@ -194,6 +207,9 @@ public final class CombatRoundV5 {
                 initiative.get(right), initiative.get(left)));
         events.add(new CombatEvent.RoundHeader(roundNumber,
                 actors.stream().map(this::actorName).toList()));
+        for (PlayerRuntimeV5 member : party)
+            if (parrying.contains(member))
+                events.add(new CombatEvent.StatusChange(member.name(), "Parrying", true));
 
         for (Object actor : actors) {
             // Stop at the first terminal outcome. Remaining actors must not
@@ -202,7 +218,8 @@ public final class CombatRoundV5 {
             if (actor instanceof PlayerRuntimeV5 player) {
                 if (!player.isAlive() || player.isAsleep()) continue;
                 PlayerOrder order = planned.get(player);
-                if (order == null || order.action() == Action.NONE) continue;
+                if (order == null || order.action() == Action.NONE
+                        || order.action() == Action.PARRY) continue;
                 if (order.action() == Action.CAST) resolveCast(order, events);
                 else if (order.action() == Action.RANGED_ATTACK) resolveRanged(order, events);
                 else resolveAttack(order, events);
@@ -215,13 +232,24 @@ public final class CombatRoundV5 {
                     continue;
                 }
                 int damage = FormulaEngine.calculateMonsterDamage(monster);
+                if (parrying.contains(defender)) damage = parriedDamage(damage);
                 defender.damage(damage);
                 events.add(new CombatEvent.Hit(monster.getName(), defender.name(), damage,
                         "Body", false));
                 if (!defender.isAlive()) events.add(new CombatEvent.Death(defender.name(), true));
             }
         }
+        // Close the temporary stance, including on terminal rounds.
+        for (PlayerRuntimeV5 member : party)
+            if (parrying.contains(member))
+                events.add(new CombatEvent.StatusChange(member.name(), "Parrying", false));
         return new RoundResult(roundNumber, List.copyOf(events), outcome());
+    }
+
+    /** Halve incoming physical damage, rounding up; a hit still deals at least one. */
+    static int parriedDamage(int damage) {
+        if (damage < 0) throw new IllegalArgumentException("Negative damage");
+        return (damage + 1) / 2;
     }
 
     private void validateOrder(PlayerOrder order) {
@@ -240,6 +268,10 @@ public final class CombatRoundV5 {
                     || order.allyTarget() != null || order.spell() != null
                     || order.rank() != null || !hasBow(order.actor()))
                 throw new IllegalArgumentException("Ranged attack requires an equipped bow and encounter enemy");
+        } else if (order.action() == Action.PARRY) {
+            if (order.enemyTarget() != null || order.allyTarget() != null
+                    || order.spell() != null || order.rank() != null)
+                throw new IllegalArgumentException("Parry takes no target, spell or rank");
         } else if (order.action() == Action.CAST) {
             Spell spell = Objects.requireNonNull(order.spell(), "spell");
             switch (spell.getEffectType()) {
