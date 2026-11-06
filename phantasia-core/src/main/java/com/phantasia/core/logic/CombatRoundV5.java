@@ -25,7 +25,7 @@ import java.util.function.ToIntFunction;
  * while monsters temporarily retain their existing typed v4 wrapper.
  * This does not replace the production v4 CombatManager.
  *
- * ATTACK, THRUST, SLASH, LUNGE, RANGED_ATTACK, PARRY, CAST and NONE are supported player orders.
+ * ATTACK, THRUST, SLASH, LUNGE, AIM_BLOW, RANGED_ATTACK, PARRY, CAST and NONE are supported player orders.
  * Monster AI is a simple attack against the first living party member.
  */
 public final class CombatRoundV5 {
@@ -36,6 +36,7 @@ public final class CombatRoundV5 {
             Objects.requireNonNull(actor, "actor");
             Objects.requireNonNull(action, "action");
             if (action != Action.ATTACK && action != Action.THRUST && action != Action.SLASH
+                    && action != Action.AIM_BLOW
                     && action != Action.LUNGE
                     && action != Action.RANGED_ATTACK
                     && action != Action.PARRY
@@ -53,6 +54,10 @@ public final class CombatRoundV5 {
         /** Three independent melee swings against one selected enemy. */
         public static PlayerOrder slash(PlayerRuntimeV5 actor, Monster target, CombatRank rank) {
             return new PlayerOrder(actor, Action.SLASH, target, null, null, rank);
+        }
+        /** Slow, deliberate single strike with a modest accuracy and damage bonus. */
+        public static PlayerOrder aimBlow(PlayerRuntimeV5 actor, Monster target, CombatRank rank) {
+            return new PlayerOrder(actor, Action.AIM_BLOW, target, null, null, rank);
         }
         /** Front-rank lunge may reach the enemy's second (middle) rank. */
         public static PlayerOrder lunge(PlayerRuntimeV5 actor, Monster target, CombatRank rank) {
@@ -82,6 +87,7 @@ public final class CombatRoundV5 {
     private final ToIntFunction<Object> initiativeRoll;
     private final BiPredicate<PlayerRuntimeV5, Monster> playerHitRoll;
     private final BiPredicate<PlayerRuntimeV5, Monster> thrustHitRoll;
+    private final BiPredicate<PlayerRuntimeV5, Monster> aimedHitRoll;
     private final BiPredicate<Monster, PlayerRuntimeV5> monsterHitRoll;
     private final ToIntFunction<Monster> monsterDamageRoll;
 
@@ -143,6 +149,22 @@ public final class CombatRoundV5 {
                   BiPredicate<Monster, PlayerRuntimeV5> monsterHitRoll,
                   ToIntFunction<Monster> monsterDamageRoll,
                   BiPredicate<PlayerRuntimeV5, Monster> thrustHitRoll) {
+        this(party, enemies, assignedRanks, assignedEnemyRanks, initiativeRoll,
+                playerHitRoll, monsterHitRoll, monsterDamageRoll, thrustHitRoll,
+                (actor, target) -> Dice.chance(aimBlowHitChance(actor, target)));
+    }
+
+    /** Extended deterministic test seam for AIM_BLOW. */
+    CombatRoundV5(List<PlayerRuntimeV5> party, List<Monster> enemies,
+                  Map<PlayerRuntimeV5, CombatRank> assignedRanks,
+                  Map<Monster, CombatRank> assignedEnemyRanks,
+                  ToIntFunction<Object> initiativeRoll,
+                  BiPredicate<PlayerRuntimeV5, Monster> playerHitRoll,
+                  BiPredicate<Monster, PlayerRuntimeV5> monsterHitRoll,
+                  ToIntFunction<Monster> monsterDamageRoll,
+                  BiPredicate<PlayerRuntimeV5, Monster> thrustHitRoll,
+                  BiPredicate<PlayerRuntimeV5, Monster> aimedHitRoll) {
+        this.aimedHitRoll = Objects.requireNonNull(aimedHitRoll, "aimedHitRoll");
         this.thrustHitRoll = Objects.requireNonNull(thrustHitRoll, "thrustHitRoll");
         this.initiativeRoll = Objects.requireNonNull(initiativeRoll, "initiativeRoll");
         this.playerHitRoll = Objects.requireNonNull(playerHitRoll, "playerHitRoll");
@@ -244,7 +266,15 @@ public final class CombatRoundV5 {
         for (PlayerRuntimeV5 player : party) if (player.isAlive()) actors.add(player);
         for (Monster enemy : enemies) if (enemy.isAlive()) actors.add(enemy);
         Map<Object, Integer> initiative = new IdentityHashMap<>();
-        for (Object actor : actors) initiative.put(actor, initiativeRoll.applyAsInt(actor));
+        for (Object actor : actors) {
+            int rolled = initiativeRoll.applyAsInt(actor);
+            if (actor instanceof PlayerRuntimeV5 player) {
+                PlayerOrder order = planned.get(player);
+                if (order != null && order.action() == Action.AIM_BLOW)
+                    rolled -= 3;
+            }
+            initiative.put(actor, rolled);
+        }
         actors.sort((left, right) -> Integer.compare(
                 initiative.get(right), initiative.get(left)));
         events.add(new CombatEvent.RoundHeader(roundNumber,
@@ -288,6 +318,16 @@ public final class CombatRoundV5 {
         return new RoundResult(roundNumber, List.copyOf(events), outcome());
     }
 
+    /** AIM_BLOW trades three initiative points for accuracy and stronger damage. */
+    static int aimBlowHitChance(PlayerRuntimeV5 attacker, Monster defender) {
+        return Math.clamp(FormulaEngine.playerHitChance(attacker, defender) + 10, 5, 95);
+    }
+
+    static int aimedDamage(int baseDamage) {
+        if (baseDamage < 0) throw new IllegalArgumentException("Negative damage");
+        return Math.min(99, (baseDamage * 5 + 3) / 4);
+    }
+
     /** THRUST grants +15 percentage points, respecting the standard 5–95 bounds. */
     static int thrustHitChance(PlayerRuntimeV5 attacker, Monster defender) {
         return Math.clamp(FormulaEngine.playerHitChance(attacker, defender) + 15, 5, 95);
@@ -301,7 +341,8 @@ public final class CombatRoundV5 {
 
     private void validateOrder(PlayerOrder order) {
         if (order.action() == Action.ATTACK || order.action() == Action.THRUST
-                || order.action() == Action.SLASH || order.action() == Action.LUNGE) {
+                || order.action() == Action.SLASH || order.action() == Action.LUNGE
+                || order.action() == Action.AIM_BLOW) {
             if (order.rank() == null || order.rank() != rankOf(order.actor())
                     || order.enemyTarget() == null
                     || !containsIdentity(enemies, order.enemyTarget())
@@ -390,12 +431,15 @@ public final class CombatRoundV5 {
         for (int swing = 0; swing < swings && target.isAlive(); swing++) {
             boolean hit = order.action() == Action.THRUST
                     ? thrustHitRoll.test(attacker, target)
-                    : playerHitRoll.test(attacker, target);
+                    : order.action() == Action.AIM_BLOW
+                        ? aimedHitRoll.test(attacker, target)
+                        : playerHitRoll.test(attacker, target);
             if (!hit) {
                 events.add(new CombatEvent.Miss(attacker.name(), target.getName()));
                 continue;
             }
             int damage = FormulaEngine.calculatePlayerDamage(attacker, order.rank());
+            if (order.action() == Action.AIM_BLOW) damage = aimedDamage(damage);
             boolean critical = FormulaEngine.rollCritical();
             if (critical) damage = FormulaEngine.applyCritical(damage);
             target.applyDamage(damage);
