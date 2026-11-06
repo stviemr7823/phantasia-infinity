@@ -534,6 +534,58 @@ class CombatRoundV5Test {
     }
 
     @Test
+    void slashResolvesThreeIndependentSwingsWithoutRetargeting() {
+        PlayerRuntimeV5 fighter = player("Fighter", 400, 0);
+        Monster target = monster("Orc", 200);
+        Monster other = monster("Orc", 200);
+        java.util.concurrent.atomic.AtomicInteger rolls = new java.util.concurrent.atomic.AtomicInteger();
+        CombatRoundV5 combat = new CombatRoundV5(
+                List.of(fighter), List.of(target, other), java.util.Map.of(), java.util.Map.of(),
+                actor -> actor == fighter ? 30 : 10,
+                (attacker, defender) -> rolls.incrementAndGet() != 2,
+                (attacker, defender) -> false,
+                monster -> 0);
+
+        RoundResult result = combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.slash(fighter, target,
+                        com.phantasia.core.model.CombatRank.FRONT)));
+
+        assertEquals(3, rolls.get());
+        assertEquals(2, result.events().stream().filter(e ->
+                e instanceof CombatEvent.Hit hit && hit.attackerName().equals("Fighter")
+                && hit.targetName().equals("Orc")).count());
+        assertEquals(1, result.events().stream().filter(e ->
+                e instanceof CombatEvent.Miss miss && miss.attackerName().equals("Fighter")).count());
+        assertEquals(200, other.getHp());
+        assertEquals(0, fighter.mp());
+        assertEquals(0, result.events().stream().filter(e ->
+                e instanceof CombatEvent.Death).count());
+    }
+
+    @Test
+    void slashStopsOnFirstKillingBlowAndKeepsOtherEnemyAlive() {
+        PlayerRuntimeV5 fighter = player("Fighter", 400, 0);
+        Monster target = monster("Orc", 1);
+        Monster other = monster("Orc", 200);
+        java.util.concurrent.atomic.AtomicInteger rolls = new java.util.concurrent.atomic.AtomicInteger();
+        CombatRoundV5 combat = new CombatRoundV5(
+                List.of(fighter), List.of(target, other), java.util.Map.of(), java.util.Map.of(),
+                actor -> actor == fighter ? 30 : 10,
+                (attacker, defender) -> { rolls.incrementAndGet(); return true; },
+                (attacker, defender) -> false,
+                monster -> 0);
+
+        RoundResult result = combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.slash(fighter, target,
+                        com.phantasia.core.model.CombatRank.FRONT)));
+        assertEquals(1, rolls.get());
+        assertEquals(0, target.getHp());
+        assertEquals(200, other.getHp());
+        assertEquals(1, result.events().stream().filter(e ->
+                e instanceof CombatEvent.Death death && !death.wasPartyMember()).count());
+    }
+
+    @Test
     void rejectsDuplicateCombatantsAndUnsupportedActions() {
         PlayerRuntimeV5 character = player("Sage", 50, 5);
         Monster enemy = monster("Orc", 10);
@@ -545,6 +597,6 @@ class CombatRoundV5Test {
                 new CombatRoundV5(List.of(), List.of(enemy)));
         assertThrows(IllegalArgumentException.class, () ->
                 new CombatRoundV5.PlayerOrder(character,
-                        com.phantasia.core.model.Action.SLASH, enemy, null, null, null));
+                        com.phantasia.core.model.Action.AIM_BLOW, enemy, null, null, null));
     }
 }
