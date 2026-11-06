@@ -439,6 +439,61 @@ class CombatRoundV5Test {
     }
 
     @Test
+    void parryHalvesActualMonsterHitEvenWhenMonsterActsFirst() {
+        PlayerRuntimeV5 guard = player("Guard", 400, 0);
+        Monster enemy = monster("Orc", 20);
+        CombatRoundV5 combat = new CombatRoundV5(
+                List.of(guard), List.of(enemy), java.util.Map.of(), java.util.Map.of(),
+                actor -> actor == enemy ? 30 : 10,
+                (actor, target) -> true,
+                (monster, defender) -> true,
+                monster -> 9);
+
+        RoundResult defended = combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.parry(guard)));
+        assertEquals(395, guard.hp(), "Nine incoming damage rounds up to five");
+        assertTrue(defended.events().get(0) instanceof CombatEvent.RoundHeader);
+        assertTrue(defended.events().get(1) instanceof CombatEvent.StatusChange start
+                && start.applied() && start.condition().equals("Parrying"));
+        assertTrue(defended.events().get(2) instanceof CombatEvent.Hit hit
+                && hit.attackerName().equals("Orc")
+                && hit.targetName().equals("Guard") && hit.damage() == 5);
+        assertTrue(defended.events().getLast() instanceof CombatEvent.StatusChange end
+                && !end.applied() && end.condition().equals("Parrying"));
+
+        RoundResult unguarded = combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.idle(guard)));
+        assertEquals(386, guard.hp(), "Parry must not carry into the next round");
+        assertTrue(unguarded.events().stream().anyMatch(event ->
+                event instanceof CombatEvent.Hit hit && hit.damage() == 9
+                        && hit.targetName().equals("Guard")));
+        assertFalse(unguarded.events().stream().anyMatch(event ->
+                event instanceof CombatEvent.StatusChange status
+                        && status.condition().equals("Parrying")));
+    }
+
+    @Test
+    void sleepingCharacterCannotGainParryStance() {
+        PlayerRuntimeV5 guard = player("Guard", 400, 0);
+        guard.setAsleep(true);
+        Monster enemy = monster("Orc", 20);
+        CombatRoundV5 combat = new CombatRoundV5(
+                List.of(guard), List.of(enemy), java.util.Map.of(), java.util.Map.of(),
+                actor -> actor == enemy ? 30 : 10,
+                (actor, target) -> true,
+                (monster, defender) -> true,
+                monster -> 7);
+
+        RoundResult result = combat.runRound(List.of(
+                CombatRoundV5.PlayerOrder.parry(guard)));
+        assertEquals(393, guard.hp());
+        assertFalse(result.events().stream().anyMatch(event ->
+                event instanceof CombatEvent.StatusChange status
+                        && status.condition().equals("Parrying")));
+        assertEquals(0, guard.mp());
+    }
+
+    @Test
     void rejectsDuplicateCombatantsAndUnsupportedActions() {
         PlayerRuntimeV5 character = player("Sage", 50, 5);
         Monster enemy = monster("Orc", 10);
