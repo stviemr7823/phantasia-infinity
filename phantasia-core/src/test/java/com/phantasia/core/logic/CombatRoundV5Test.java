@@ -651,6 +651,6 @@ class CombatRoundV5Test {
                 new CombatRoundV5(List.of(), List.of(enemy)));
         assertThrows(IllegalArgumentException.class, () ->
                 new CombatRoundV5.PlayerOrder(character,
-                        com.phantasia.core.model.Action.AIM_BLOW, enemy, null, null, null));
+                        com.phantasia.core.model.Action.RUN, enemy, null, null, null));
     }
 }
