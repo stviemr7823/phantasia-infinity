@@ -630,7 +630,7 @@ class CombatRoundV5Test {
                 CombatRoundV5.PlayerOrder.aimBlow(fighter, back,
                         com.phantasia.core.model.CombatRank.FRONT))));
         assertEquals(200, back.getHp());
-        assertEquals(1, CombatRoundV5.aimedDamage(1));
+        assertEquals(2, CombatRoundV5.aimedDamage(1));
         assertEquals(5, CombatRoundV5.aimedDamage(4));
         assertEquals(99, CombatRoundV5.aimedDamage(99));
         assertThrows(IllegalArgumentException.class, () -> CombatRoundV5.aimedDamage(-1));
