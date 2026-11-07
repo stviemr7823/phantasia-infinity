@@ -11,12 +11,15 @@ import java.util.logging.Logger;
 /**
  * Serializes and deserializes {@link ShopRegistry} contents to {@code shops.dat}.
  *
- * <h3>Binary format — version 1</h3>
+ * <h3>Binary format — version 2 (version 1 reader retained)</h3>
  * <pre>
  *   Header:
  *     4 bytes  magic "SHOP"
- *     2 bytes  version = 1
+ *     2 bytes  version = 2
  *     2 bytes  shop count
+ *
+ *   v2 adds a nullable restock flag name (i32 UTF-8 length, -1 = null)
+ *   immediately after each shop name.
  *
  *   Per shop:
  *     2 bytes  shopId
@@ -39,7 +42,7 @@ public final class ShopBaker {
     private static final Logger LOG = Logger.getLogger(ShopBaker.class.getName());
 
     private static final byte[] MAGIC   = {'S', 'H', 'O', 'P'};
-    private static final short  VERSION = 1;
+    private static final short  VERSION = 2;
 
     private static final int FLAG_HAS_REQUIRED    = 0x01;
     private static final int FLAG_ONE_TIME         = 0x02;
@@ -62,7 +65,7 @@ public final class ShopBaker {
 
             out.write(MAGIC);
             out.writeShort(VERSION);
-            out.writeShort(shops.size());
+            ushort(out, shops.size());
 
             for (ShopInventory shop : shops) {
                 writeShop(out, shop);
@@ -74,11 +77,12 @@ public final class ShopBaker {
 
     private static void writeShop(DataOutputStream out, ShopInventory shop)
             throws IOException {
-        out.writeShort(shop.getShopId());
+        ushort(out, shop.getShopId());
         writeString(out, shop.getName());
+        InteriorMapCodec.flag(out, shop.getRestockFlag());
 
         List<ShopEntry> entries = shop.getEntries();
-        out.writeShort(entries.size());
+        ushort(out, entries.size());
         for (ShopEntry entry : entries) {
             writeEntry(out, entry);
         }
@@ -86,10 +90,12 @@ public final class ShopBaker {
 
     private static void writeEntry(DataOutputStream out, ShopEntry entry)
             throws IOException {
-        out.writeShort(entry.itemId());
+        ushort(out, entry.itemId());
 
         // quantity: -1 (unlimited) stored as 0xFFFF
-        int qty = entry.quantity() < 0 ? 0xFFFF : entry.quantity();
+        if (entry.quantity() < -1 || entry.quantity() > 65534)
+            throw new IOException("Shop quantity exceeds supported range");
+        int qty = entry.quantity() == -1 ? 0xFFFF : entry.quantity();
         out.writeShort(qty);
 
         out.writeInt(Float.floatToIntBits(entry.priceMultiplier()));
@@ -134,13 +140,13 @@ public final class ShopBaker {
             }
 
             short version = in.readShort();
-            if (version != VERSION) {
+            if (version != 1 && version != VERSION) {
                 throw new IOException("Unsupported shops.dat version: " + version);
             }
 
             int count = in.readShort() & 0xFFFF;
             for (int i = 0; i < count; i++) {
-                registry.register(readShop(in));
+                registry.register(readShop(in, version));
             }
         }
 
@@ -148,11 +154,12 @@ public final class ShopBaker {
         return registry;
     }
 
-    private static ShopInventory readShop(DataInputStream in) throws IOException {
+    private static ShopInventory readShop(DataInputStream in, int version) throws IOException {
         int    shopId = in.readShort() & 0xFFFF;
         String name   = readString(in);
 
         ShopInventory shop = new ShopInventory(shopId, name);
+        if (version >= 2) shop.setRestockFlag(InteriorMapCodec.flag(in));
 
         int entryCount = in.readShort() & 0xFFFF;
         for (int i = 0; i < entryCount; i++) {
@@ -186,9 +193,14 @@ public final class ShopBaker {
     // I/O helpers
     // -------------------------------------------------------------------------
 
+    private static void ushort(DataOutput out, int value) throws IOException {
+        if (value < 0 || value > 65535) throw new IOException("Shop value exceeds u16: " + value);
+        out.writeShort(value);
+    }
+
     private static void writeString(DataOutputStream out, String s) throws IOException {
         byte[] bytes = s.getBytes(StandardCharsets.UTF_8);
-        out.writeShort(bytes.length);
+        ushort(out, bytes.length);
         out.write(bytes);
     }
 
@@ -206,3 +218,4 @@ public final class ShopBaker {
                 |  (in.readByte() & 0xFF);
     }
 }
+

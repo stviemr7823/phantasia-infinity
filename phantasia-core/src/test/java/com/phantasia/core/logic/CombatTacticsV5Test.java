@@ -82,7 +82,8 @@ class CombatTacticsV5Test {
                 actor -> actor == striker ? 30 : actor == guard ? 20 : 10,
                 (actor, target) -> true,
                 (monster, defender) -> false,
-                monster -> 0);
+                monster -> 0,
+                (actor, target) -> true); // formation test: THRUST must also be deterministic
 
         assertFalse(combat.canMeleeReach(striker, rear));
         assertFalse(combat.canMeleeReach(mage, shield));
@@ -152,3 +153,4 @@ class CombatTacticsV5Test {
         assertEquals(3, spellResolutions, "All three living enemies resolve hit or miss");
     }
 }
+

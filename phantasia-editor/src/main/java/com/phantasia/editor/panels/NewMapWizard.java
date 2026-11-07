@@ -146,8 +146,10 @@ public class NewMapWizard {
                     map.setTile(x, y, defaultTile);
         }
 
+        MapEntrances.addSuggestedDefault(map);
         state.putInteriorMap(map);
         state.markDirty("interiorMap:" + id);
         return map;
     }
 }
+

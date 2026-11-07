@@ -26,6 +26,9 @@ public enum GameState {
     /** Town interior — walkable tile map with NPCs and service counters. */
     TOWN,
 
+    /** Shared authored town/castle/dungeon traversal. */
+    LOCAL_MAP,
+
     /** Dungeon roam — interior tile movement with fog of war. */
     DUNGEON,
 
