@@ -9,14 +9,14 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 
-/** Writes INTR version 2: header (magic, u16 version, u16 map count),
+/** Writes INTR version 3: header (magic, u16 version, u16 map count),
  * followed by lossless typed records defined in InteriorMapCodec.
- * Existing version 1 files remain readable by InteriorMapLoader.
+ * Existing version 1 and 2 files remain readable by InteriorMapLoader.
  */
 public final class InteriorMapBaker {
 
     private static final byte[] MAGIC   = {'I', 'N', 'T', 'R'};
-    private static final short  VERSION = 2;
+    private static final short  VERSION = 3;
 
     private InteriorMapBaker() {}
 

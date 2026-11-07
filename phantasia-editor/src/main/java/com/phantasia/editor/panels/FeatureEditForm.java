@@ -76,6 +76,7 @@ public final class FeatureEditForm extends JPanel {
         private JTextArea text;
         private JComboBox<Object> unlock;
         private JTable guaranteed, random;
+        private JTextField entranceId;
 
         PayloadForm(PlacedFeatureType type, Object original) {
             this.type = type; this.original = original;
@@ -114,9 +115,18 @@ public final class FeatureEditForm extends JPanel {
                 }
                 case STAIRS_LINK -> {
                     var d = original instanceof StairsData v ? v : new StairsData(0, 0, new WorldPosition(0, 0));
-                    number("targetMapId", "Destination map ID (0 = this map)", d.targetMapId());
-                    number("targetFloor", "Destination floor (0 for authored maps)", d.targetFloor());
+                    var link = original instanceof MapLinkData v ? v : null;
+                    option("namedEntrance", "Use named entrance", !(original instanceof StairsData));
+                    number("targetMapId", "Destination map ID", link == null ? d.targetMapId() : link.targetMapId());
+                    entranceId = new JTextField(link == null ? "entry" : link.entranceId(), 16); entranceId.setName("entranceId");
+                    rows.add(new JLabel("Entrance name")); rows.add(entranceId);
+                    number("targetFloor", "Floor (coordinate links only)", d.targetFloor());
                     position(d.targetPosition());
+                    Runnable mode = () -> {
+                        boolean named = option("namedEntrance"); entranceId.setEnabled(named);
+                        numbers.get("targetFloor").setEnabled(!named); numbers.get("arrivalX").setEnabled(!named); numbers.get("arrivalY").setEnabled(!named);
+                    };
+                    options.get("namedEntrance").addActionListener(e -> mode.run()); mode.run();
                 }
                 case EXIT -> {
                     var p = original instanceof ExitData v ? v.returnPosition() : null;
@@ -206,7 +216,14 @@ public final class FeatureEditForm extends JPanel {
                     yield new BankData(deposit, withdrawal);
                 }
                 case LOCKED_DOOR -> new LockData(number("requiredItemId"), flag(unlock), optionalText(original instanceof LockData d ? d.lockedMessage() : null));
-                case STAIRS_LINK -> new StairsData(number("targetMapId"), number("targetFloor"), position());
+                case STAIRS_LINK -> {
+                    if (option("namedEntrance")) {
+                        String key = entranceId.getText().trim();
+                        if (key.isEmpty()) throw new IllegalArgumentException("Entrance name is required");
+                        yield new MapLinkData(number("targetMapId"), key);
+                    }
+                    yield new StairsData(number("targetMapId"), number("targetFloor"), position());
+                }
                 case EXIT -> new ExitData(option("entryPoint") ? null : position());
                 case TRAP -> {
                     int min = number("damageMin"), max = number("damageMax");

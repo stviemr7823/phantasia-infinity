@@ -7,7 +7,7 @@ import com.phantasia.core.world.ServiceData.*;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 
-/** Version 2 interior records. Enum names and explicit payload tags are wire IDs.
+/** Version 3 interior records (v2 base plus entrances). Enum names and explicit payload tags are wire IDs.
  * Authored data only: exploration and campaign progress are never written here.
  */
 final class InteriorMapCodec {
@@ -87,9 +87,15 @@ final class InteriorMapCodec {
             string(out, n.facing().name()); flag(out, n.appearCondition());
             flag(out, n.disappearCondition());
         }
+        string(out, map.getDefaultEntranceId());
+        out.writeInt(count(map.getEntrances().size()));
+        for (MapEntrance e : map.getEntrances()) {
+            string(out, e.id()); position(out, e.position());
+            string(out, e.facing() == null ? null : e.facing().name());
+        }
     }
 
-    static InteriorMap read(DataInput in) throws IOException {
+    static InteriorMap read(DataInput in, int version) throws IOException {
         int id = in.readInt(); String name = string(in);
         InteriorMapType type = value(InteriorMapType.class, string(in));
         String tiles = string(in); int w = count(in.readInt()), h = count(in.readInt());
@@ -114,6 +120,14 @@ final class InteriorMapCodec {
             int npc = in.readInt(), x = in.readInt(), y = in.readInt();
             map.addNpc(new PlacedNpc(npc, x, y, value(Direction.class, string(in)), flag(in), flag(in)));
         }
+        if (version >= 3) {
+            map.setDefaultEntranceId(string(in));
+            count = count(in.readInt());
+            for (int i = 0; i < count; i++) {
+                String key = string(in); WorldPosition p = position(in); String facing = string(in);
+                map.addEntrance(new MapEntrance(key, p, facing == null ? null : value(Direction.class, facing)));
+            }
+        } else MapEntrances.addSuggestedDefault(map);
         return map;
     }
 
@@ -131,6 +145,8 @@ final class InteriorMapCodec {
             string(out, "lock"); out.writeInt(d.requiredItemId()); flag(out, d.requiredFlag()); string(out, d.lockedMessage());
         } else if (data instanceof StairsData d) {
             string(out, "stairs"); out.writeInt(d.targetMapId()); out.writeInt(d.targetFloor()); position(out, d.targetPosition());
+        } else if (data instanceof MapLinkData d) {
+            string(out, "entrance-link"); out.writeInt(d.targetMapId()); string(out, d.entranceId());
         } else if (data instanceof ExitData d) {
             string(out, "exit"); position(out, d.returnPosition());
         } else if (data instanceof TrapData d) {
@@ -163,6 +179,7 @@ final class InteriorMapCodec {
             case "bank" -> new BankData(in.readInt(), in.readInt());
             case "lock" -> new LockData(in.readInt(), flag(in), string(in));
             case "stairs" -> new StairsData(in.readInt(), in.readInt(), position(in));
+            case "entrance-link" -> new MapLinkData(in.readInt(), string(in));
             case "exit" -> new ExitData(position(in));
             case "trap" -> new TrapData(in.readInt(), in.readInt(), string(in), in.readInt());
             case "loot" -> readLoot(in);

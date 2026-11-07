@@ -24,7 +24,7 @@ public final class InteriorMapLoader {
             Logger.getLogger(InteriorMapLoader.class.getName());
 
     private static final byte[] MAGIC   = {'I', 'N', 'T', 'R'};
-    private static final short  VERSION = 2;
+    private static final short  VERSION = 3;
 
     private InteriorMapLoader() {}
 
@@ -55,7 +55,7 @@ public final class InteriorMapLoader {
             }
 
             short version = in.readShort();
-            if (version != 1 && version != VERSION) {
+            if (version < 1 || version > VERSION) {
                 throw new IOException(
                         "Unsupported interiors.dat version: " + version);
             }
@@ -63,7 +63,8 @@ public final class InteriorMapLoader {
             int count = in.readShort() & 0xFFFF;
 
             for (int i = 0; i < count; i++) {
-                InteriorMap map = version == 1 ? readMap(in) : InteriorMapCodec.read(in);
+                InteriorMap map = version == 1 ? readMap(in) : InteriorMapCodec.read(in, version);
+                if (version == 1) MapEntrances.addSuggestedDefault(map);
                 if (registry.get(map.getId()) != null) throw new IOException("Duplicate interior ID: " + map.getId());
                 registry.register(map);
             }

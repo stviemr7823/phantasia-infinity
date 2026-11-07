@@ -17,5 +17,6 @@ jobs:
       - run: bash run_core_baseline.sh
       - run: bash run_editor_persistence.sh
       - run: bash run_editor_authoring.sh
+      - run: bash run_editor_placements.sh
       - run: ./gradlew :phantasia-core:test :phantasia-j2d:compileJava :phantasia-editor:compileJava
 

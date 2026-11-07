@@ -49,6 +49,19 @@ public class InteriorMap {
     private final List<PlacedFeature>  features;
     private final List<PlacedNpc>      placedNpcs;
 
+    private final List<MapEntrance> entrances = new ArrayList<>();
+    private String defaultEntranceId;
+
+    public void addEntrance(MapEntrance entrance) { entrances.add(entrance); }
+    public void removeEntrance(MapEntrance entrance) { entrances.remove(entrance); }
+    public List<MapEntrance> getEntrances() { return Collections.unmodifiableList(entrances); }
+    public MapEntrance getEntrance(String entranceId) {
+        for (MapEntrance e : entrances) if (java.util.Objects.equals(e.id(), entranceId)) return e;
+        return null;
+    }
+    public String getDefaultEntranceId() { return defaultEntranceId; }
+    public void setDefaultEntranceId(String id) { defaultEntranceId = id; }
+
     // Runtime state (not serialized in the map definition)
     private final BitSet               explored;
 
@@ -210,3 +223,4 @@ public class InteriorMap {
     public String           getTileSetId()  { return tileSetId; }
     public InteriorSettings getSettings()   { return settings; }
 }
+

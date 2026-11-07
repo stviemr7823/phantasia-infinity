@@ -137,6 +137,9 @@ public final class ServiceData {
     }
 
     // -------------------------------------------------------------------------
+    // Named links use exact map IDs, including 0; no floor or coordinate sentinel.
+    public record MapLinkData(int targetMapId, String entranceId) {}
+
     // Exit (return to overworld)
     // -------------------------------------------------------------------------
 
@@ -181,3 +184,4 @@ public final class ServiceData {
         }
     }
 }
+

@@ -84,6 +84,17 @@ public final class AuthoredContentValidator {
         if (s.getAmbientLight() == null || s.getTorchRadius() < 0 || s.getEncounterInterval() < 0
                 || (s.isEncountersEnabled() && s.getEncounterInterval() == 0))
             error("SETTINGS", at, "check light, torch radius and encounter interval");
+        Set<String> entranceIds = new HashSet<>();
+        for (var entry : m.getEntrances()) {
+            String where = at + " entrance " + entry.id();
+            if (entry.id() == null || entry.id().isBlank()) error("ENTRANCE_ID", where, "entrance name is required");
+            if (!entranceIds.add(entry.id())) error("ENTRANCE_ID", where, "duplicate entrance name");
+            if (entry.facing() == null) error("FACING", where, "arrival facing is required");
+            if (!MapEntrances.isClear(m, entry.position())) error("ENTRANCE_POSITION", where, "arrival must be on a clear, passable tile away from exits, stairs and traps");
+        }
+        if (m.getDefaultEntranceId() == null || m.getDefaultEntranceId().isBlank()
+                || m.getEntrance(m.getDefaultEntranceId()) == null)
+            error("DEFAULT_ENTRANCE", at, "choose a default entrance");
         Set<WorldPosition> occupied = new HashSet<>();
         for (var f : m.getFeatures()) {
             String where = at + " " + f.featureType() + " (" + f.x() + "," + f.y() + ")";
@@ -97,6 +108,8 @@ public final class AuthoredContentValidator {
             if (!m.inBounds(n.x(), n.y())) error("PLACEMENT", where, "NPC is outside the map");
             if (!npcs.containsKey(n.npcId())) error("NPC_REFERENCE", where, "NPC definition does not exist");
             if (n.facing() == null) error("FACING", where, "facing is required");
+            if (n.appearCondition() != null && n.appearCondition() == n.disappearCondition())
+                error("NPC_CONDITIONS", where, "appearance and disappearance cannot use the same flag");
             // Conditional NPCs can share a tile at different quest stages.
             if (n.appearCondition() == null && n.disappearCondition() == null
                     && !npcTiles.add(new WorldPosition(n.x(), n.y())))
@@ -113,7 +126,7 @@ public final class AuthoredContentValidator {
             case BANK_COUNTER -> d instanceof BankData;
             case CHEST -> d instanceof LootTable;
             case LOCKED_DOOR -> d instanceof LockData;
-            case STAIRS_LINK -> d instanceof StairsData;
+            case STAIRS_LINK -> d instanceof StairsData || d instanceof MapLinkData;
             case EXIT -> d == null || d instanceof ExitData; // v1/default entry-point exit
             case TRAP -> d instanceof TrapData;
         };
@@ -154,6 +167,17 @@ public final class AuthoredContentValidator {
         if (d instanceof ExitData exit && exit.returnPosition() != null
                 && (exit.returnPosition().x() < 0 || exit.returnPosition().y() < 0))
             error("ARRIVAL", at, "world return coordinates cannot be negative");
+        if (d instanceof MapLinkData link) {
+            var target = maps.get(link.targetMapId());
+            if (target == null) error("MAP_REFERENCE", at, "destination map #" + link.targetMapId() + " does not exist");
+            else {
+                var entrance = target.getEntrance(link.entranceId());
+                if (link.entranceId() == null || link.entranceId().isBlank() || entrance == null)
+                    error("ENTRANCE_REFERENCE", at, "entrance '" + link.entranceId() + "' does not exist in map #" + target.getId());
+                else if (!MapEntrances.isClear(target, entrance.position()))
+                    error("ARRIVAL", at, "destination entrance '" + link.entranceId() + "' is blocked");
+            }
+        }
         if (d instanceof StairsData stairs) {
             var target = stairs.targetMapId() == 0 ? source : maps.get(stairs.targetMapId());
             if (target == null) { error("MAP_REFERENCE", at, "destination map #" + stairs.targetMapId() + " does not exist"); return; }

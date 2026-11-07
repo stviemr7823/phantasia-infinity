@@ -109,7 +109,12 @@ public final class EditorAuthoringSmokeTest {
         state.execute(new EditFeatureCommand(map, null, added)); same(added, map.getFeatureAt(3, 0), "place");
         state.undo(); check(map.getFeatureAt(3, 0) == null, "undo place"); state.redo(); same(added, map.getFeatureAt(3, 0), "redo place");
     }
-    private static InteriorMap map(int id) { return new InteriorMap(id, "Area " + id, InteriorMapType.DUNGEON, 6, 6, "dungeon_standard"); }
+    private static InteriorMap map(int id) {
+        var map = new InteriorMap(id, "Area " + id, InteriorMapType.DUNGEON, 6, 6, "dungeon_standard");
+        map.addEntrance(new MapEntrance("entry", new WorldPosition(5, 5), Direction.SOUTH));
+        map.setDefaultEntranceId("entry");
+        return map;
+    }
     private static EditorState validState() {
         var state = new EditorState(); var source = map(1); var target = map(2);
         int i = 0;
