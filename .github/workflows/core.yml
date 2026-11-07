@@ -20,6 +20,7 @@ jobs:
       - run: bash run_editor_placements.sh
       - run: bash run_local_traversal.sh
       - run: bash run_diagnostic_tests.sh
+      - run: bash run_local_effects.sh
       - run: timeout 30s xvfb-run -a bash run_mockup.sh --window-smoke
       - run: ./gradlew :phantasia-core:test :phantasia-j2d:compileJava :phantasia-editor:compileJava
 

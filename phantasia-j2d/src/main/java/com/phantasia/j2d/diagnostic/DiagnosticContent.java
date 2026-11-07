@@ -35,7 +35,7 @@ public final class DiagnosticContent {
         entry(dungeon, "entry", 2, 5, Direction.EAST, true); entry(dungeon, "deep", 12, 7, Direction.WEST, false);
         link(dungeon, 1, 5, SETTLEMENT, "dungeon"); link(dungeon, 14, 5, DEEP, "entry");
         for (int y = 2; y <= 9; y++) if (y != 5) dungeon.setTile(8, y, 1);
-        sign(dungeon, 5, 3, "East leads to the second test room. West returns to the settlement. Chest and trap markers are placeholders; rewards, damage and encounters are pending.");
+        sign(dungeon, 5, 3, "East leads to the second test room. West returns to the settlement. Chest rewards and trap damage are active tests. Encounters remain pending.");
         dungeon.addFeature(new PlacedFeature(9, 8, PlacedFeatureType.CHEST, new LootTable(5, 5).addGuaranteed(101, 1), null, QuestFlag.MISC_FLAG_61, null));
         dungeon.addFeature(new PlacedFeature(10, 8, PlacedFeatureType.TRAP, TrapData.standard(), null, QuestFlag.MISC_FLAG_62, null));
         var deep = room(DEEP, "Test dungeon / room 2", 14, 10, true);

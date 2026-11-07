@@ -43,6 +43,8 @@ public class GameSession {
 
     // Runtime-only state (not serialized in the save file)
     private DungeonFloor currentDungeonFloor;
+    private final LocalInteractionState localInteractions = new LocalInteractionState();
+    public LocalInteractionState getLocalInteractions() { return localInteractions; }
 
     // -------------------------------------------------------------------------
     // Constructors

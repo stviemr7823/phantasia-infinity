@@ -57,6 +57,7 @@ public final class LocalMapTraversal {
 
     public Result move(Direction direction) {
         if (exited) throw new IllegalStateException("This local-map visit has ended");
+        if (LocalFeatureEffects.partyDefeated(session)) return blocked("The party has fallen.");
         facing = Objects.requireNonNull(direction);
         int x = position.x() + dx(direction), y = position.y() + dy(direction);
         if (!map.inBounds(x, y)) return blocked("The edge of this area.");
@@ -110,6 +111,16 @@ public final class LocalMapTraversal {
         if (!door && featureAvailable(feature)) return result(Kind.FEATURE, null, feature, "");
         return result(Kind.MOVED, null, null, "");
     }
+    public LocalFeatureEffects.Result interact(PlacedFeature feature) {
+        return interact(feature, java.util.concurrent.ThreadLocalRandom.current());
+    }
+    public LocalFeatureEffects.Result interact(PlacedFeature feature, java.util.random.RandomGenerator random) {
+        if (exited || feature == null || map.getFeatureAt(feature.x(), feature.y()) != feature
+                || !position.equals(new WorldPosition(feature.x(), feature.y())))
+            return LocalFeatureEffects.unavailable("The feature is not at the party's current position.");
+        return LocalFeatureEffects.apply(session, map.getId(), feature, random);
+    }
+
     private boolean canUnlock(PlacedFeature feature) {
         if (!(feature.serviceData() instanceof LockData lock)) return false;
         return lock.requiredFlag() != null && session.hasFlag(lock.requiredFlag())
@@ -122,6 +133,8 @@ public final class LocalMapTraversal {
     public void completeInteraction(PlacedFeature f) {
         if (exited || f == null || map.getFeatureAt(f.x(), f.y()) != f || !featureAvailable(f))
             throw new IllegalArgumentException("Interaction is no longer available");
+        if (f.featureType() == PlacedFeatureType.CHEST || f.featureType() == PlacedFeatureType.TRAP)
+            throw new IllegalArgumentException("Complete chest and trap interactions through their effects");
         consume(f);
     }
     private void arrive(InteriorMapRegistry.Arrival arrival) {

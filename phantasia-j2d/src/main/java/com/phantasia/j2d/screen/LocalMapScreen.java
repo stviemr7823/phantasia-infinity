@@ -3,6 +3,9 @@ package com.phantasia.j2d.screen;
 import com.phantasia.core.data.*;
 import com.phantasia.core.logic.Direction;
 import com.phantasia.core.logic.LocalMapTraversal;
+import com.phantasia.core.logic.LocalFeatureEffects;
+import com.phantasia.core.model.item.Inventory;
+import com.phantasia.core.model.item.ItemTable;
 import com.phantasia.core.model.*;
 import com.phantasia.core.world.*;
 import com.phantasia.j2d.engine.*;
@@ -39,6 +42,9 @@ public final class LocalMapScreen implements Screen {
     @Override public void onKeyReleased(KeyEvent e) { held.remove(e.getKeyCode()); }
     @Override public void onMouseClicked(MouseEvent e) {}
     @Override public void update(float dt) {
+        if (LocalFeatureEffects.partyDefeated(session)) {
+            held.clear(); message = "The party has fallen. Esc: pause."; return;
+        }
         if (cooldown > 0) { cooldown = Math.max(0, cooldown - dt); return; }
         Direction direction = held.contains(KeyEvent.VK_W) || held.contains(KeyEvent.VK_UP) ? Direction.NORTH
                 : held.contains(KeyEvent.VK_S) || held.contains(KeyEvent.VK_DOWN) ? Direction.SOUTH
@@ -86,12 +92,26 @@ public final class LocalMapScreen implements Screen {
             }
             case SHOP_COUNTER -> openShop(f.serviceData() instanceof ShopInventory shop ? shop
                     : f.serviceData() instanceof Integer id && shops != null ? shops.get(id) : null);
-            case CHEST -> message = "Treasure chest — rewards pending.";
-            case TRAP -> message = "Trap — effects pending.";
+            case CHEST, TRAP -> showEffect(visit.traversal().interact(f));
             case INN_COUNTER, GUILD_COUNTER, BANK_COUNTER -> message = "Service counter — custom settings pending.";
             default -> message = "Interaction unavailable.";
         }
     }
+    private void showEffect(LocalFeatureEffects.Result effect) {
+        message = effect.message();
+        if (effect.status() == LocalFeatureEffects.Status.OPENED) {
+            var items = new java.util.LinkedHashMap<Integer, Integer>();
+            for (var entry : effect.items()) items.merge(entry.itemId(), entry.quantity(), Integer::sum);
+            var names = items.entrySet().stream().limit(3)
+                    .map(e -> ItemTable.get(e.getKey()).name() + " x" + e.getValue()).toList();
+            message = "Found " + effect.gold() + " gold" + (names.isEmpty() ? "." : "; " + String.join(", ", names))
+                    + (items.size() > 3 ? " (+" + (items.size() - 3) + " more item types)." : "");
+        } else if (!effect.damage().isEmpty()) {
+            message += " " + String.join(", ", effect.damage().stream().map(d -> d.member().getName() + " -" + d.amount() + " HP").toList());
+            if (effect.status() == LocalFeatureEffects.Status.DEFEATED) message += " The party has fallen. Esc: pause.";
+        }
+    }
+
     @Override public void render(Graphics2D g) {
         int w = GameCanvas.DESIGN_WIDTH, h = GameCanvas.DESIGN_HEIGHT;
         g.setColor(new Color(20, 23, 28)); g.fillRect(0, 0, w, h);
@@ -132,6 +152,9 @@ public final class LocalMapScreen implements Screen {
         g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 18));
         g.drawString("Arrows / WASD: move     Esc: pause", 35, 76);
         g.drawString(message == null ? "" : message, 35, h - 69);
-        g.drawString("Map " + map.getId() + "   " + traversal.position() + "   " + traversal.facing(), 35, h - 35);
+        int carried = session.getParty().stream().mapToInt(p -> new Inventory(p).count()).sum();
+        String hp = String.join(", ", session.getParty().stream().map(p -> p.getHp() + "/" + p.getStat(Stat.MAX_HP)).toList());
+        g.drawString("Map " + map.getId() + "   " + traversal.position() + "   " + traversal.facing()
+                + "   Gold " + session.getLedger().getPartyGold() + "   HP " + hp + "   Packs " + carried + "/" + session.getParty().size() * Inventory.MAX_ITEMS, 35, h - 35);
     }
 }

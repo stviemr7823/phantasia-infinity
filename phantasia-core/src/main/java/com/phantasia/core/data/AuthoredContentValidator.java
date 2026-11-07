@@ -153,8 +153,18 @@ public final class AuthoredContentValidator {
         }
         if (d instanceof TrapData trap && (trap.damageMin() < 0 || trap.damageMax() < trap.damageMin() || trap.detectSkill() < 0))
             error("RANGE", at, "trap damage range or detection threshold is invalid");
+        if (f.featureType() == PlacedFeatureType.CHEST && f.consumedFlag() == null)
+            error("CHEST_COMPLETION", at, "choose a completion flag for one-shot treasure");
+        if ((f.featureType() == PlacedFeatureType.CHEST || f.featureType() == PlacedFeatureType.TRAP)
+                && f.requiredFlag() != null && f.requiredFlag() == f.consumedFlag())
+            error("FEATURE_FLAGS", at, "activation and completion must use different flags");
+        if (f.featureType() == PlacedFeatureType.CHEST || f.featureType() == PlacedFeatureType.TRAP) {
+            var set = tileSet(source.getTileSetId());
+            var tile = set == null ? null : set.getEntry(source.getTile(f.x(), f.y()));
+            if (tile != null && !tile.passable()) error("TRIGGER_TILE", at, "chests and traps must be on passable tiles");
+        }
         if (d instanceof LootTable loot) {
-            if (loot.getGoldMin() < 0 || loot.getGoldMax() < loot.getGoldMin() || loot.getRollCount() < 0)
+            if (loot.getGoldMin() < 0 || loot.getGoldMax() < loot.getGoldMin() || loot.getRollCount() < 0 || loot.getRollCount() > LootTable.MAX_ROLLS)
                 error("RANGE", at, "treasure gold range or roll count is invalid");
             long totalWeight = 0;
             for (var e : loot.getGuaranteed()) { item(e.itemId(), at); if (e.quantity() <= 0) error("QUANTITY", at, "loot quantity must be positive"); }

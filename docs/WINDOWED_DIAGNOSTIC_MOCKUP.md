@@ -25,7 +25,7 @@ The normal launcher and its save behavior remain unchanged.
 | Map ID | Area | Contents / connections |
 | --- | --- | --- |
 | 1000 | Test settlement | West exit to menu; east dungeon; north castle; guide, merchant and trainer |
-| 1001 | Test dungeon / room 1 | Settlement return; second room; chest/trap placeholders |
+| 1001 | Test dungeon / room 1 | Settlement return; second room; chest/trap tests |
 | 1002 | Test dungeon / room 2 | Return to room 1; placeholder notice |
 | 1003 | Test castle courtyard | Settlement return; locked gate; conditional guard; hall |
 | 1004 | Test castle hall | Courtyard return; conditional NPC |
@@ -41,8 +41,8 @@ The five maps, five NPC definitions and one shop are validated, exported to
 temporary interiors/NPC/shop files, then reloaded with the production codecs
 before launch. Temporary fixture files are removed on exit.
 
-Chest rewards, trap effects, encounters and native-v5 campaign progression are
-still pending. The trainer uses the existing service overlay. No combat or
+Chest rewards and trap effects are active; encounters and native-v5 campaign
+progression remain pending. The trainer uses the existing service overlay. No combat or
 training rules are changed, and these test names do not fill undecided story
 content.
 
@@ -86,5 +86,6 @@ this creates the actual window, renders thirty frames and closes automatically.
 That is a window lifecycle check, not a human play-through. Target-machine sizing,
 input feel and manual gameplay review remain pending.
 
-Next: one-shot treasure rewards and trap effects, then encounters and native-v5
-campaign/progression integration.
+Next: encounters and native-v5 campaign/progression integration.
+
+Treasure/trap behavior and retry/persistence limits are detailed in [LOCAL_TREASURE_TRAPS.md](LOCAL_TREASURE_TRAPS.md).

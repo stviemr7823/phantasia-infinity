@@ -58,7 +58,7 @@ public final class DiagnosticApplication {
             g.drawString(pause ? "Diagnostic paused" : "Phantasia Infinity / diagnostic mockup", 150, 185);
             g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 28)); g.setColor(Color.WHITE);
             String[] lines = pause ? new String[]{"Enter / Esc: resume", "R: reset test party and flags", "Q: quit"}
-                    : new String[]{"Enter: enter the test settlement", "East: two connected dungeon rooms", "North: castle courtyard and hall", "Speak to Test guide to open the castle gate", "Arrows / WASD: move and bump into NPCs", "Esc: pause   R: fresh test session   Q: quit", "Non-canon test content. Normal game saves are not used.", "Chest effects, encounters and campaign progression are not connected yet."};
+                    : new String[]{"Enter: enter the test settlement", "East: two connected dungeon rooms", "North: castle courtyard and hall", "Speak to Test guide to open the castle gate", "Arrows / WASD: move and bump into NPCs", "Esc: pause   R: fresh test session   Q: quit", "Non-canon test content. Normal game saves are not used.", "Treasure and traps are active. Encounters and campaign progression remain pending."};
             if (!pause && !fixture) lines = new String[]{"Enter: enter authored map #" + entryMap,
                     "Arrows / WASD: move and bump into NPCs", "Esc: pause   R: fresh test session   Q: quit",
                     "Fresh diagnostic party. Normal game saves are not used."};
