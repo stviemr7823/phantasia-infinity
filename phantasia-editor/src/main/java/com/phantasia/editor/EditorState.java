@@ -643,14 +643,23 @@ public class EditorState {
      * @throws IOException if the archive can't be written
      */
     public void saveProject(Path path) throws IOException {
-        this.projectPath = path;
-
-        Map<String, String> env = new HashMap<>();
-        env.put("create", "true");
-
-        URI zipUri = URI.create("jar:" + path.toUri());
-        try (FileSystem zipFs = FileSystems.newFileSystem(zipUri, env)) {
-            saveToArchive(zipFs);
+        Path target = path.toAbsolutePath();
+        Path staging = Files.createTempFile(target.getParent(), "phantasia_save_", ".zip");
+        try {
+            if (Files.exists(target)) Files.copy(target, staging, StandardCopyOption.REPLACE_EXISTING);
+            else Files.delete(staging); // ZIP provider creates a fresh archive
+            URI zipUri = URI.create("jar:" + staging.toUri());
+            try (FileSystem zipFs = FileSystems.newFileSystem(zipUri, Map.of("create", "true"))) {
+                saveToArchive(zipFs);
+            }
+            try {
+                Files.move(staging, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(staging, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+            this.projectPath = path;
+        } finally {
+            Files.deleteIfExists(staging);
         }
 
         clearAllDirty();
@@ -737,10 +746,11 @@ public class EditorState {
             }
         }
 
-        // TODO: Load interiors.dat, npcs.dat, quests.dat, shops.dat,
-        // dungeons.dat as their bakers/loaders are built (Phase 6).
-        // For now these categories start empty when loading from
-        // loose files.
+        try {
+            loadAuthoredContent(datDir);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to load authored content from " + datDir, e);
+        }
 
         fireProjectLoaded();
     }
@@ -863,23 +873,13 @@ public class EditorState {
             clearDirtyPrefix("item");
         }
 
-        // NPCs
-        if (hasDirtyPrefix("npc")) {
-            bakeNpcsDat(datDir.resolve("npcs.dat"));
-            clearDirtyPrefix("npc");
-        }
-
-        // Shops
-        if (hasDirtyPrefix("shop")) {
-            bakeShopsDat(datDir.resolve("shops.dat"));
-            clearDirtyPrefix("shop");
-        }
-
-        // Interior maps
-        if (hasDirtyPrefix("interiorMap")) {
-            bakeInteriorsDat(datDir.resolve("interiors.dat"));
-            clearDirtyPrefix("interiorMap");
-        }
+        // Always export authored collections, including after save/reopen and deletion.
+        bakeNpcsDat(datDir.resolve("npcs.dat"));
+        bakeShopsDat(datDir.resolve("shops.dat"));
+        bakeInteriorsDat(datDir.resolve("interiors.dat"));
+        clearDirtyPrefix("npc");
+        clearDirtyPrefix("shop");
+        clearDirtyPrefix("interiorMap");
 
     }
 
@@ -1048,6 +1048,21 @@ public class EditorState {
     // type the corresponding core Baker expects, then delegate the actual
     // file I/O. The core Baker logs its own [XxxBaker] line per bake.
 
+    private void loadAuthoredContent(Path dir) throws IOException {
+        for (InteriorMap map : InteriorMapLoader.load(dir.resolve("interiors.dat").toString()).getAll())
+            interiorMaps.put(map.getId(), map);
+        for (NpcDefinition npc : NpcBaker.load(dir.resolve("npcs.dat").toString()).getAll())
+            npcs.put(npc.getId(), npc);
+        for (ShopInventory shop : ShopBaker.load(dir.resolve("shops.dat").toString()).getAll())
+            shops.put(shop.getShopId(), shop);
+    }
+
+    private static void deleteAuthoredTemp(Path dir) throws IOException {
+        for (String file : List.of("interiors.dat", "npcs.dat", "shops.dat"))
+            Files.deleteIfExists(dir.resolve(file));
+        Files.deleteIfExists(dir);
+    }
+
     private void bakeNpcsDat(Path path) throws IOException {
         NpcRegistry registry = new NpcRegistry();
         for (NpcDefinition npc : npcs.values()) {
@@ -1140,8 +1155,16 @@ public class EditorState {
             Files.deleteIfExists(tmp);
         }
 
-        // TODO: Load interiors.dat, npcs.dat, quests.dat, shops.dat,
-        // dungeons.dat, editor.json as their loaders are built.
+        Path contentDir = Files.createTempDirectory("phantasia_open_");
+        try {
+            for (String file : List.of("interiors.dat", "npcs.dat", "shops.dat")) {
+                Path entry = zipFs.getPath("/" + file);
+                if (Files.exists(entry)) Files.copy(entry, contentDir.resolve(file));
+            }
+            loadAuthoredContent(contentDir);
+        } finally {
+            deleteAuthoredTemp(contentDir);
+        }
 
         // editor.json
         Path editorJson = zipFs.getPath("/editor.json");
@@ -1184,8 +1207,20 @@ public class EditorState {
             Files.deleteIfExists(tmp);
         }
 
-        // TODO: Save items.dat, interiors.dat, npcs.dat, quests.dat,
-        // shops.dat, dungeons.dat as their bakers are built.
+        // Always replace these entries, including empty collections after deletion.
+        Path contentDir = Files.createTempDirectory("phantasia_save_content_");
+        try {
+            bakeInteriorsDat(contentDir.resolve("interiors.dat"));
+            bakeNpcsDat(contentDir.resolve("npcs.dat"));
+            bakeShopsDat(contentDir.resolve("shops.dat"));
+            for (String file : List.of("interiors.dat", "npcs.dat", "shops.dat")) {
+                Files.copy(contentDir.resolve(file), zipFs.getPath("/" + file),
+                        StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            deleteAuthoredTemp(contentDir);
+        }
+        // Other archive categories remain pending their dedicated codecs.
 
         // editor.json
         String metadata = buildEditorMetadata();
@@ -1329,3 +1364,4 @@ public class EditorState {
         return true;
     }
 }
+

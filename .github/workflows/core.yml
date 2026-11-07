@@ -1,7 +1,7 @@
 name: core
 on:
   push:
-    branches: [work/april-source-reconciliation]
+    branches: [work/april-source-reconciliation, work/editor-persistence]
   workflow_dispatch:
 
 jobs:
@@ -15,4 +15,6 @@ jobs:
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
       - run: bash run_core_baseline.sh
+      - run: bash run_editor_persistence.sh
       - run: ./gradlew :phantasia-core:test :phantasia-j2d:compileJava :phantasia-editor:compileJava
+
