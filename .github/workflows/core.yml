@@ -22,6 +22,7 @@ jobs:
       - run: bash run_diagnostic_tests.sh
       - run: bash run_local_effects.sh
       - run: bash run_local_encounters.sh
+      - run: bash run_native_progression.sh
       - run: timeout 30s xvfb-run -a bash run_mockup.sh --window-smoke
       - run: ./gradlew :phantasia-core:test :phantasia-j2d:compileJava :phantasia-editor:compileJava
 

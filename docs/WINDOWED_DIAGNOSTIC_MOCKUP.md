@@ -17,6 +17,11 @@ dialogue (first press reveals text if it is still appearing). Esc pauses. R in
 the pause/entry menu resets the party, flags, gold and overlay stack; Q quits.
 The window close button also quits.
 
+V at the entry menu opens a separate native-v5 battle/guild/technique test.
+Its native party is independent of the authored-map test party; see
+[NATIVE_PROGRESSION_DIAGNOSTIC.md](NATIVE_PROGRESSION_DIAGNOSTIC.md) for controls,
+test curriculum and integration limits.
+
 Input, fixed updates and rendering run on the AWT event thread at a capped 30 FPS.
 The diagnostic launcher never invokes normal saves.
 
@@ -94,7 +99,7 @@ this creates the actual window, renders thirty frames and closes automatically.
 That is a window lifecycle check, not a human play-through. Target-machine sizing,
 input feel and manual gameplay review remain pending.
 
-Next: native-v5 campaign/progression integration and persistent campaign snapshots.
+Next: connect authored maps to native party ownership and add persistent campaign snapshots.
 
 Encounter pacing, reward receipts and return paths are detailed in
 [LOCAL_ENCOUNTERS.md](LOCAL_ENCOUNTERS.md).

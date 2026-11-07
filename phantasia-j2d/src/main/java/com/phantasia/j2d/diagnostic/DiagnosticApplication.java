@@ -29,6 +29,7 @@ public final class DiagnosticApplication {
     public void reset() {
         session = new GameSession(List.of(PlayerCharacter.fromLegacyCreation("Test adventurer", Job.WIZARD, 100, 50, 20, 20, 20, 20, 1)), PartyLedger.newGame(), new WorldPosition(0, 0), 0);
         traversal = null; manager = new ScreenManager();
+        manager.register(GameState.NATIVE_DIAGNOSTIC, new NativeProgressionScreen(manager));
         manager.register(GameState.LOCAL_MAP, new LocalMapScreen(manager, session, content.npcs(), content.shops(),
                 () -> List.of(EncounterFactory.buildMonster("Test creature", 12, 1, 25))));
         var spells = new SpellFactory();
@@ -54,6 +55,7 @@ public final class DiagnosticApplication {
                 case KeyEvent.VK_ENTER -> { if (pause) manager.pop(); else enter(entryMap); }
                 case KeyEvent.VK_ESCAPE -> { if (pause) manager.pop(); }
                 case KeyEvent.VK_R -> reset();
+                case KeyEvent.VK_V -> { if (!pause) manager.switchTo(GameState.NATIVE_DIAGNOSTIC, null); }
                 case KeyEvent.VK_Q -> quit.run();
             }
         }
@@ -70,6 +72,7 @@ public final class DiagnosticApplication {
                     "Arrows / WASD: move and bump into NPCs", "Esc: pause   R: fresh test session   Q: quit",
                     "Fresh diagnostic party. Normal game saves are not used."};
             for (int i = 0; i < lines.length; i++) g.drawString(lines[i], 155, 285 + i * 65);
+            if (!pause) g.drawString("V: native-v5 battle / guild / technique test (separate party)", 155, 285 + lines.length * 65);
         }
     }
 }

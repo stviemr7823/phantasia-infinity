@@ -29,6 +29,9 @@ public enum GameState {
     /** Shared authored town/castle/dungeon traversal. */
     LOCAL_MAP,
 
+    /** Isolated native party progression diagnostic; registered by the test launcher. */
+    NATIVE_DIAGNOSTIC,
+
     /** Dungeon roam — interior tile movement with fog of war. */
     DUNGEON,
 

@@ -43,7 +43,9 @@ reset or quit. Overworld battles retain their existing overworld return/quit rou
 
 These screens still operate on the legacy party model. Native-v5 party ownership,
 learned/readied techniques and final campaign progression are separate integration
-work. The diagnostic supplies no spells and disables Cast; this does not remove
+work. A separate [native progression diagnostic](NATIVE_PROGRESSION_DIAGNOSTIC.md)
+now exercises native battles, guild level-ups and learned/readied techniques with
+its own party. The local-map diagnostic supplies no spells and disables Cast; this does not remove
 spells from a normal game with a populated spell bank. The fixture is non-canon.
 
 ## Verification

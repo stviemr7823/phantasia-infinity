@@ -91,6 +91,22 @@ public final class CombatRoundV5 {
     private final BiPredicate<Monster, PlayerRuntimeV5> monsterHitRoll;
     private final ToIntFunction<Monster> monsterDamageRoll;
 
+    /** Native campaign order: Agility, stable input-order ties, existing move penalties. */
+    public static CombatRoundV5 agilityOrdered(List<PlayerRuntimeV5> party, List<Monster> enemies,
+                                              ToIntFunction<Monster> enemyAgility) {
+        Objects.requireNonNull(enemyAgility);
+        Map<Monster, Integer> speeds = new IdentityHashMap<>();
+        for (var enemy : enemies) {
+            int speed = enemyAgility.applyAsInt(enemy);
+            if (speed < 0 || speed > 255) throw new IllegalArgumentException("Enemy Agility must be 0..255");
+            speeds.put(enemy, speed);
+        }
+        return new CombatRoundV5(party, enemies, Map.of(), Map.of(),
+                actor -> actor instanceof PlayerRuntimeV5 player ? player.attribute(Attribute.AGILITY)
+                        : speeds.get((Monster) actor),
+                FormulaEngine::playerRollToHit);
+    }
+
     /** Compatibility constructor: all party members initially occupy the front rank. */
     public CombatRoundV5(List<PlayerRuntimeV5> party, List<Monster> enemies) {
         this(party, enemies, Map.of(), Map.of());
