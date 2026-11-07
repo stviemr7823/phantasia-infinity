@@ -841,6 +841,7 @@ public class EditorState {
      * @throws IOException if any write fails
      */
     public void bakeAll(Path datDir) throws IOException {
+        requireValidAuthoredContent();
         Files.createDirectories(datDir);
 
         // World map + features
@@ -888,6 +889,7 @@ public class EditorState {
      * Example: {@code bakeCategory(datDir, "monster")} bakes monsters.dat.
      */
     public void bakeCategory(Path datDir, String prefix) throws IOException {
+        if (Set.of("npc", "shop", "interiorMap").contains(prefix)) requireValidAuthoredContent();
         Files.createDirectories(datDir);
         switch (prefix) {
             case "worldMap" -> {
@@ -1047,6 +1049,17 @@ public class EditorState {
     // These helpers wrap each category's in-memory map into the registry
     // type the corresponding core Baker expects, then delegate the actual
     // file I/O. The core Baker logs its own [XxxBaker] line per bake.
+
+    /** Draft archives may be incomplete; runtime export must resolve authored references. */
+    public List<AuthoredContentValidator.Issue> validateAuthoredContent() {
+        return AuthoredContentValidator.validate(interiorMaps.values(), npcs.values(), shops.values());
+    }
+
+    private void requireValidAuthoredContent() throws IOException {
+        var issues = validateAuthoredContent();
+        if (!issues.isEmpty()) throw new IOException("Content validation failed (showing up to 200 issues):\n"
+                + String.join("\n", issues.stream().map(Object::toString).toList()));
+    }
 
     private void loadAuthoredContent(Path dir) throws IOException {
         for (InteriorMap map : InteriorMapLoader.load(dir.resolve("interiors.dat").toString()).getAll())

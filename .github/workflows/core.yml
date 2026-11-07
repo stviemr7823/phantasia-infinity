@@ -16,5 +16,6 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: bash run_core_baseline.sh
       - run: bash run_editor_persistence.sh
+      - run: bash run_editor_authoring.sh
       - run: ./gradlew :phantasia-core:test :phantasia-j2d:compileJava :phantasia-editor:compileJava
 

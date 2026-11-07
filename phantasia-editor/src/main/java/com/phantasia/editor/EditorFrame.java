@@ -520,21 +520,24 @@ public class EditorFrame extends JFrame {
         }
     }
 
-    private void handleBakeAll() {
+    private boolean handleBakeAll() {
         try {
             Path datDir = Path.of(DataPaths.DAT_DIR);
             EditorState.get().bakeAll(datDir);
             statusBar.setMessage("All data baked to " + datDir);
+            return true;
         } catch (IOException ex) {
-            JOptionPane.showMessageDialog(this,
-                    "Bake failed:\n" + ex.getMessage(),
+            JTextArea report = new JTextArea("Bake failed:\n" + ex.getMessage(), 16, 72);
+            report.setEditable(false); report.setLineWrap(true); report.setWrapStyleWord(true);
+            report.setCaretPosition(0);
+            JOptionPane.showMessageDialog(this, new JScrollPane(report),
                     "Bake Error", JOptionPane.ERROR_MESSAGE);
+            return false;
         }
     }
 
     private void handleBakeAndTour() {
-        handleBakeAll();
-        handleTourLaunch();
+        if (handleBakeAll()) handleTourLaunch();
     }
 
     private void handleTourLaunch() {
@@ -584,8 +587,7 @@ public class EditorFrame extends JFrame {
         return switch (choice) {
             case 0 -> {
                 // Bake first, then proceed
-                handleBakeAll();
-                yield true;
+                yield handleBakeAll();
             }
             case 1 -> true;   // Discard
             default -> false;  // Cancel
@@ -694,3 +696,4 @@ public class EditorFrame extends JFrame {
         }
     }
 }
+

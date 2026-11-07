@@ -4,6 +4,7 @@ package com.phantasia.editor.panels;
 import com.phantasia.core.world.*;
 import com.phantasia.editor.*;
 import com.phantasia.editor.commands.PaintTilesCommand;
+import com.phantasia.editor.commands.EditFeatureCommand;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -51,6 +52,21 @@ public class InteriorMapEditorPanel extends JPanel implements EditorFrame.Worksp
 
     private final MapCanvas         canvas;
     private PaintTilesCommand       activePaintCmd;   // current drag stroke
+
+    private final DefaultListModel<String> featureModel = new DefaultListModel<>();
+    private final EditorStateListener contentListener = new EditorStateListener() {
+        @Override public void onDataChanged(String key) {
+            if (tabKey.equals(key)) { rebuildFeatureList(featureModel); canvas.repaint(); }
+        }
+    };
+
+    @Override public void addNotify() {
+        super.addNotify(); EditorState.get().addListener(contentListener);
+        rebuildFeatureList(featureModel);
+    }
+    @Override public void removeNotify() {
+        EditorState.get().removeListener(contentListener); super.removeNotify();
+    }
 
     // Tile colors — fallback rendering when no sprites are loaded
     private static final Color[] TOWN_TILE_COLORS = {
@@ -183,10 +199,17 @@ public class InteriorMapEditorPanel extends JPanel implements EditorFrame.Worksp
         panel.setOpaque(false);
 
         // Feature list
-        DefaultListModel<String> featureModel = new DefaultListModel<>();
         rebuildFeatureList(featureModel);
         JList<String> featureList = new JList<>(featureModel);
         featureList.setFont(EditorTheme.FONT_SMALL);
+        featureList.addMouseListener(new MouseAdapter() {
+            @Override public void mouseClicked(MouseEvent e) {
+                int index = featureList.getSelectedIndex();
+                if (e.getClickCount() == 2 && index >= 0 && index < map.getFeatures().size()) {
+                    PlacedFeature f = map.getFeatures().get(index); showFeatureDialog(f.x(), f.y());
+                }
+            }
+        });
 
         JPanel featurePanel = EditorUtils.titledPanel("Features", new BorderLayout());
         featurePanel.add(new JScrollPane(featureList), BorderLayout.CENTER);
@@ -234,6 +257,15 @@ public class InteriorMapEditorPanel extends JPanel implements EditorFrame.Worksp
         gridBox.setOpaque(false);
         gridBox.setForeground(EditorTheme.TEXT);
         JButton fillBtn = EditorUtils.button("Fill All");
+        JButton validate = EditorUtils.button("Validate");
+        validate.addActionListener(e -> {
+            var issues = EditorState.get().validateAuthoredContent();
+            JTextArea report = new JTextArea(issues.isEmpty() ? "No structural errors found."
+                    : String.join("\n", issues.stream().map(Object::toString).toList()), 16, 65);
+            report.setEditable(false); report.setCaretPosition(0);
+            JOptionPane.showMessageDialog(this, new JScrollPane(report), "Content validation",
+                    issues.isEmpty() ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.ERROR_MESSAGE);
+        });
         JLabel  infoLabel = EditorUtils.label(map.getWidth() + "×" + map.getHeight()
                 + "  " + map.getMapType() + "  id:" + map.getId());
 
@@ -246,6 +278,7 @@ public class InteriorMapEditorPanel extends JPanel implements EditorFrame.Worksp
         bar.add(zoomOut);
         bar.add(gridBox);
         bar.add(fillBtn);
+        bar.add(validate);
         bar.add(Box.createHorizontalStrut(20));
         bar.add(infoLabel);
         return bar;
@@ -273,44 +306,27 @@ public class InteriorMapEditorPanel extends JPanel implements EditorFrame.Worksp
     private void showFeatureDialog(int tx, int ty) {
         PlacedFeature existing = map.getFeatureAt(tx, ty);
 
-        JComboBox<PlacedFeatureType> typeBox = new JComboBox<>(PlacedFeatureType.values());
-        JTextField dataField = new JTextField(
-                existing != null && existing.serviceData() != null
-                        ? existing.serviceData().toString() : "", 20);
-
-        if (existing != null) typeBox.setSelectedItem(existing.featureType());
-
-        JPanel panel = new JPanel(new GridLayout(3, 2, 6, 6));
-        panel.add(new JLabel("Feature Type:"));
-        panel.add(typeBox);
-        panel.add(new JLabel("Data (text):"));
-        panel.add(dataField);
-        panel.add(new JLabel("Position:"));
-        panel.add(new JLabel("(" + tx + ", " + ty + ")"));
-
-        String[] options = existing != null
-                ? new String[]{"Update", "Remove", "Cancel"}
-                : new String[]{"Place", "Cancel"};
-
-        int result = JOptionPane.showOptionDialog(this, panel,
-                "Feature at (" + tx + ", " + ty + ")",
-                JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE,
-                null, options, options[0]);
-
-        if (existing != null && result == 1) {
-            // Remove
-            map.removeFeature(existing);
-            EditorState.get().markDirty(tabKey);
-            canvas.repaint();
-        } else if (result == 0) {
-            // Place or Update
-            if (existing != null) map.removeFeature(existing);
-            PlacedFeatureType type = (PlacedFeatureType) typeBox.getSelectedItem();
-            String data = dataField.getText().trim();
-            map.addFeature(new PlacedFeature(tx, ty, type,
-                    data.isEmpty() ? null : data));
-            EditorState.get().markDirty(tabKey);
-            canvas.repaint();
+        FeatureEditForm form = new FeatureEditForm(tx, ty, existing);
+        JScrollPane scroll = new JScrollPane(form);
+        scroll.setPreferredSize(new Dimension(580, 520));
+        String[] options = existing == null ? new String[]{"Place", "Cancel"}
+                : new String[]{"Update", "Remove", "Cancel"};
+        while (true) {
+            int result = JOptionPane.showOptionDialog(this, scroll,
+                    "Feature at (" + tx + ", " + ty + ")", JOptionPane.DEFAULT_OPTION,
+                    JOptionPane.PLAIN_MESSAGE, null, options, options[0]);
+            if (existing != null && result == 1) {
+                EditorState.get().execute(new EditFeatureCommand(map, existing, null));
+            } else if (result == 0) {
+                try {
+                    EditorState.get().execute(new EditFeatureCommand(map, existing, form.readFeature()));
+                } catch (IllegalArgumentException ex) {
+                    JOptionPane.showMessageDialog(this, ex.getMessage(), "Check feature fields", JOptionPane.ERROR_MESSAGE);
+                    continue; // preserve the form and its draft values
+                }
+            } else return;
+            rebuildFeatureList(featureModel); canvas.repaint();
+            return;
         }
     }
 
@@ -475,3 +491,4 @@ public class InteriorMapEditorPanel extends JPanel implements EditorFrame.Worksp
         }
     }
 }
+
