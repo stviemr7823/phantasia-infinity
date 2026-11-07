@@ -531,26 +531,18 @@ public class WorldRoamScreen implements Screen {
             case TOWN -> {
                 InteriorMap townMap = (interiorMaps != null)
                         ? interiorMaps.get(feat.getId()) : null;
-                if (townMap != null) {
-                    WorldPosition spawn = interiorMaps.getSpawnPosition(feat.getId());
-                    screenManager.fadeTo(GameState.TOWN,
-                            new TownRoamScreen.TownData(
-                                    record.getName(), townMap,
-                                    spawn, GameState.WORLD_ROAM));
-                } else {
-                    // Fallback: open a shop if no interior map authored yet
-                    ShopInventory shop = buildDemoShop(record.getName());
-                    screenManager.push(GameState.SHOP,
-                            new ShopOverlay.ShopData(shop, session));
-                }
+                if (townMap != null) enterAuthoredMap(townMap);
+                else locationLabel = "No authored map for " + record.getName();
             }
 
             case DUNGEON -> {
-                DungeonFloor floor = DungeonFloorGenerator.generate(40, 30, 12);
-                screenManager.fadeTo(GameState.DUNGEON,
-                        new DungeonRoamScreen.DungeonData(
-                                record.getName() + " \u2014 Floor 1",
-                                floor, session, GameState.WORLD_ROAM));
+                InteriorMap authored = interiorMaps == null ? null : interiorMaps.get(feat.getId());
+                if (authored != null && authored.getMapType() == InteriorMapType.DUNGEON) enterAuthoredMap(authored);
+                else {
+                    DungeonFloor floor = DungeonFloorGenerator.generate(40, 30, 12);
+                    screenManager.fadeTo(GameState.DUNGEON,
+                            new DungeonRoamScreen.DungeonData(record.getName() + " — Floor 1", floor, session, GameState.WORLD_ROAM));
+                }
             }
 
             case NPC -> {
@@ -561,6 +553,16 @@ public class WorldRoamScreen implements Screen {
             }
 
             default -> {}
+        }
+    }
+
+    private void enterAuthoredMap(InteriorMap map) {
+        try {
+            var visit = new LocalMapTraversal(interiorMaps, session, map.getId(), null,
+                    p -> worldMap.inBounds(p.x(), p.y()));
+            screenManager.fadeTo(GameState.LOCAL_MAP, new LocalMapScreen.Visit(visit, GameState.WORLD_ROAM));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            locationLabel = "Cannot enter: " + e.getMessage();
         }
     }
 
