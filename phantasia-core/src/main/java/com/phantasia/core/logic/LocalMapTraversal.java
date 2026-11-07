@@ -24,6 +24,11 @@ public final class LocalMapTraversal {
     private WorldPosition position;
     private Direction facing;
     private boolean exited;
+    private boolean encounterSuspended;
+    private long movementCount;
+    public long movementCount() { return movementCount; }
+    void suspendForEncounter(boolean suspended) { encounterSuspended = suspended; }
+    public boolean encounterSuspended() { return encounterSuspended; }
 
     public LocalMapTraversal(InteriorMapRegistry registry, GameSession session, int mapId, String entranceId) {
         this(registry, session, mapId, entranceId, p -> p.x() >= 0 && p.y() >= 0);
@@ -57,6 +62,7 @@ public final class LocalMapTraversal {
 
     public Result move(Direction direction) {
         if (exited) throw new IllegalStateException("This local-map visit has ended");
+        if (encounterSuspended) return blocked("An encounter is in progress.");
         if (LocalFeatureEffects.partyDefeated(session)) return blocked("The party has fallen.");
         facing = Objects.requireNonNull(direction);
         int x = position.x() + dx(direction), y = position.y() + dy(direction);
@@ -107,7 +113,7 @@ public final class LocalMapTraversal {
             return result(Kind.EXIT, null, feature, "Leaving " + map.getName());
         }
         if (unlock) consume(feature);
-        position = new WorldPosition(x, y); reveal();
+        position = new WorldPosition(x, y); movementCount++; reveal();
         if (!door && featureAvailable(feature)) return result(Kind.FEATURE, null, feature, "");
         return result(Kind.MOVED, null, null, "");
     }
@@ -115,7 +121,7 @@ public final class LocalMapTraversal {
         return interact(feature, java.util.concurrent.ThreadLocalRandom.current());
     }
     public LocalFeatureEffects.Result interact(PlacedFeature feature, java.util.random.RandomGenerator random) {
-        if (exited || feature == null || map.getFeatureAt(feature.x(), feature.y()) != feature
+        if (exited || encounterSuspended || feature == null || map.getFeatureAt(feature.x(), feature.y()) != feature
                 || !position.equals(new WorldPosition(feature.x(), feature.y())))
             return LocalFeatureEffects.unavailable("The feature is not at the party's current position.");
         return LocalFeatureEffects.apply(session, map.getId(), feature, random);
@@ -131,7 +137,7 @@ public final class LocalMapTraversal {
      * Reward/service implementations remain responsible for their own successful completion.
      */
     public void completeInteraction(PlacedFeature f) {
-        if (exited || f == null || map.getFeatureAt(f.x(), f.y()) != f || !featureAvailable(f))
+        if (exited || encounterSuspended || f == null || map.getFeatureAt(f.x(), f.y()) != f || !featureAvailable(f))
             throw new IllegalArgumentException("Interaction is no longer available");
         if (f.featureType() == PlacedFeatureType.CHEST || f.featureType() == PlacedFeatureType.TRAP)
             throw new IllegalArgumentException("Complete chest and trap interactions through their effects");

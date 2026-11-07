@@ -29,7 +29,14 @@ public final class DiagnosticApplication {
     public void reset() {
         session = new GameSession(List.of(PlayerCharacter.fromLegacyCreation("Test adventurer", Job.WIZARD, 100, 50, 20, 20, 20, 20, 1)), PartyLedger.newGame(), new WorldPosition(0, 0), 0);
         traversal = null; manager = new ScreenManager();
-        manager.register(GameState.LOCAL_MAP, new LocalMapScreen(manager, session, content.npcs(), content.shops()));
+        manager.register(GameState.LOCAL_MAP, new LocalMapScreen(manager, session, content.npcs(), content.shops(),
+                () -> List.of(EncounterFactory.buildMonster("Test creature", 12, 1, 25))));
+        var spells = new SpellFactory();
+        manager.register(GameState.ENCOUNTER_SPLASH, new EncounterSplashScreen(manager));
+        manager.register(GameState.COMBAT_PLANNING, new CombatPlanningScreen(manager, spells));
+        manager.register(GameState.COMBAT_EXECUTION, new CombatExecutionScreen(manager));
+        manager.register(GameState.VICTORY, new VictoryScreen(manager));
+        manager.register(GameState.DEFEAT, new DefeatScreen(manager, quit));
         manager.register(GameState.DIALOGUE, new DialogueScreen(manager)); manager.register(GameState.SHOP, new ShopOverlay(manager));
         manager.register(GameState.INN, new InnOverlay(manager)); manager.register(GameState.GUILD, new GuildOverlay(manager)); manager.register(GameState.BANK, new BankOverlay(manager));
         manager.register(GameState.WORLD_ROAM, new Menu(false)); manager.register(GameState.PAUSE, new Menu(true)); manager.switchTo(GameState.WORLD_ROAM, null);
@@ -58,7 +65,7 @@ public final class DiagnosticApplication {
             g.drawString(pause ? "Diagnostic paused" : "Phantasia Infinity / diagnostic mockup", 150, 185);
             g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 28)); g.setColor(Color.WHITE);
             String[] lines = pause ? new String[]{"Enter / Esc: resume", "R: reset test party and flags", "Q: quit"}
-                    : new String[]{"Enter: enter the test settlement", "East: two connected dungeon rooms", "North: castle courtyard and hall", "Speak to Test guide to open the castle gate", "Arrows / WASD: move and bump into NPCs", "Esc: pause   R: fresh test session   Q: quit", "Non-canon test content. Normal game saves are not used.", "Treasure and traps are active. Encounters and campaign progression remain pending."};
+                    : new String[]{"Enter: enter the test settlement", "East: two connected dungeon rooms", "North: castle courtyard and hall", "Speak to Test guide to open the castle gate", "Arrows / WASD: move and bump into NPCs", "Esc: pause   R: fresh test session   Q: quit", "Non-canon test content. Normal game saves are not used.", "Treasure, traps and test battles are active. Native-v5 campaign progression remains pending."};
             if (!pause && !fixture) lines = new String[]{"Enter: enter authored map #" + entryMap,
                     "Arrows / WASD: move and bump into NPCs", "Esc: pause   R: fresh test session   Q: quit",
                     "Fresh diagnostic party. Normal game saves are not used."};

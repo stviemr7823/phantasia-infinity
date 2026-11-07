@@ -45,6 +45,10 @@ public class GameSession {
     private DungeonFloor currentDungeonFloor;
     private final LocalInteractionState localInteractions = new LocalInteractionState();
     public LocalInteractionState getLocalInteractions() { return localInteractions; }
+    private final List<CombatRewards> pendingCombatRewards = new ArrayList<>();
+    public List<CombatRewards> getPendingCombatRewards() { return List.copyOf(pendingCombatRewards); }
+    public void queueCombatReward(CombatRewards reward) { if (!pendingCombatRewards.contains(reward)) pendingCombatRewards.add(reward); }
+    public void removeCombatReward(CombatRewards reward) { pendingCombatRewards.remove(reward); }
 
     // -------------------------------------------------------------------------
     // Constructors

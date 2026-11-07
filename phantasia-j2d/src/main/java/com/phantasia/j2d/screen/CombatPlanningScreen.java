@@ -44,8 +44,15 @@ public class CombatPlanningScreen implements Screen {
             CombatManager         manager,
             CombatNarrator        narrator,
             int                   roundNumber,
-            GameSession           session
-    ) {}
+            GameSession           session,
+            com.phantasia.j2d.engine.BattleContinuation continuation
+    ) {
+        public PlanningResult(List<PlayerCharacter> party, List<Monster> enemies, CombatManager manager,
+                              CombatNarrator narrator, int roundNumber, GameSession session) {
+            this(party, enemies, manager, narrator, roundNumber, session,
+                    new com.phantasia.j2d.engine.BattleContinuation(session, enemies));
+        }
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     // Layout constants (design resolution 1920×1080)
@@ -74,6 +81,7 @@ public class CombatPlanningScreen implements Screen {
     private static final int MENU_COLS    = 2;
 
     private GameSession session;
+    private com.phantasia.j2d.engine.BattleContinuation continuation;
 
     // ─────────────────────────────────────────────────────────────────────
     // Available actions (displayed in menu)
@@ -131,6 +139,7 @@ public class CombatPlanningScreen implements Screen {
             // First round — build the combat manager
             this.party       = ed.session().getParty();
             this.session     = ed.session();
+            this.continuation = ed.continuation();
             this.enemies     = ed.enemies();
             this.condition   = ed.condition();
             this.combatManager = new CombatManager(party, enemies, spellFactory, condition);
@@ -144,6 +153,7 @@ public class CombatPlanningScreen implements Screen {
             this.narrator      = pr.narrator();
             this.roundNumber   = pr.roundNumber();
             this.session       = pr.session();
+            this.continuation = pr.continuation();
         }
 
         // Reset selection
@@ -284,7 +294,8 @@ public class CombatPlanningScreen implements Screen {
 
             // Label
             Color textColor = highlight ? GOLD_BRIGHT : TEXT;
-            drawText(g, MENU_LABELS[i], cx + 18, cy + 27, TextStyle.BODY, textColor);
+            drawText(g, MENU_ACTIONS[i] == Action.CAST && spellFactory.size() == 0
+                    ? "Cast (unavailable)" : MENU_LABELS[i], cx + 18, cy + 27, TextStyle.BODY, textColor);
         }
 
         // ENGAGE button + hint
@@ -444,6 +455,7 @@ public class CombatPlanningScreen implements Screen {
                 if (menuFocused) {
                     // Assign action to selected PC
                     if (selectedPartyIndex < living.size()) {
+                        if (MENU_ACTIONS[selectedMenuIndex] == Action.CAST && spellFactory.size() == 0) return;
                         living.get(selectedPartyIndex).setAction(MENU_ACTIONS[selectedMenuIndex]);
                         menuFocused = false;
                         // Advance to next PC
@@ -494,7 +506,7 @@ public class CombatPlanningScreen implements Screen {
 
         // Build execution data
         CombatExecutionScreen.ExecutionData execData = new CombatExecutionScreen.ExecutionData(
-                party, enemies, result, narrator, combatManager, roundNumber, session
+                party, enemies, result, narrator, combatManager, roundNumber, session, continuation
         );
 
         screenManager.fadeTo(GameState.COMBAT_EXECUTION, execData);

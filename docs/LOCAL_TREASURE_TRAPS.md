@@ -74,5 +74,6 @@ party defeat, actual screen effects and reset. Earlier editor/traversal/mockup
 suites remain in CI, along with the virtual-display window smoke test and full
 Java 21 build. Manual target-machine gameplay remains pending.
 
-Next: authored encounters and reward return flow, then native-v5 progression and
-campaign persistence.
+Encounter pacing and reward return flow are now covered in
+[LOCAL_ENCOUNTERS.md](LOCAL_ENCOUNTERS.md). Native-v5 progression and campaign
+persistence remain pending.

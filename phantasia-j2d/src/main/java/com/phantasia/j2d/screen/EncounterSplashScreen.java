@@ -35,8 +35,13 @@ public class EncounterSplashScreen implements Screen {
     public record EncounterData(
             List<Monster>      enemies,
             EncounterCondition condition,
-            GameSession session
-    ) {}
+            GameSession session,
+            com.phantasia.j2d.engine.BattleContinuation continuation
+    ) {
+        public EncounterData(List<Monster> enemies, EncounterCondition condition, GameSession session) {
+            this(enemies, condition, session, new com.phantasia.j2d.engine.BattleContinuation(session, enemies));
+        }
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     // Timing

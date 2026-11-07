@@ -139,7 +139,7 @@ public class GameMain {
         // Stopping the game loop unblocks awaitShutdown() below, which
         // triggers the shutdown hook → auto-save → System.exit.
         screenManager.register(GameState.DEFEAT,
-                new DefeatScreen(gameLoop::stop));
+                new DefeatScreen(screenManager, gameLoop::stop));
 
         screenManager.register(GameState.DIALOGUE,
                 new DialogueScreen(screenManager));

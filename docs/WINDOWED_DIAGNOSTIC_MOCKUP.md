@@ -18,7 +18,7 @@ the pause/entry menu resets the party, flags, gold and overlay stack; Q quits.
 The window close button also quits.
 
 Input, fixed updates and rendering run on the AWT event thread at a capped 30 FPS.
-The normal launcher and its save behavior remain unchanged.
+The diagnostic launcher never invokes normal saves.
 
 ## Test route
 
@@ -41,10 +41,18 @@ The five maps, five NPC definitions and one shop are validated, exported to
 temporary interiors/NPC/shop files, then reloaded with the production codecs
 before launch. Temporary fixture files are removed on exit.
 
-Chest rewards and trap effects are active; encounters and native-v5 campaign
-progression remain pending. The trainer uses the existing service overlay. No combat or
-training rules are changed, and these test names do not fill undecided story
-content.
+Chest rewards, trap effects and legacy battle screens are active. Dungeon rooms
+start a diagnostic battle after six ordinary moves; settlements and castle areas
+are peaceful. Victory, escape and defeat return to the retained local visit.
+Native-v5 party ownership and readied-technique integration remain pending. The
+trainer uses the existing service overlay; these test names do not fill undecided
+story content.
+
+In battle, use arrows to select party members and commands, Tab/Space to move
+through planning controls, Enter to confirm, and E to engage. Enter/Space skips
+round playback. Cast is unavailable in the diagnostic fixture because it supplies
+no spell definitions. This is the existing legacy combat prototype, not the final
+phone combat interface.
 
 ## Edited content and previews
 
@@ -86,6 +94,9 @@ this creates the actual window, renders thirty frames and closes automatically.
 That is a window lifecycle check, not a human play-through. Target-machine sizing,
 input feel and manual gameplay review remain pending.
 
-Next: encounters and native-v5 campaign/progression integration.
+Next: native-v5 campaign/progression integration and persistent campaign snapshots.
+
+Encounter pacing, reward receipts and return paths are detailed in
+[LOCAL_ENCOUNTERS.md](LOCAL_ENCOUNTERS.md).
 
 Treasure/trap behavior and retry/persistence limits are detailed in [LOCAL_TREASURE_TRAPS.md](LOCAL_TREASURE_TRAPS.md).

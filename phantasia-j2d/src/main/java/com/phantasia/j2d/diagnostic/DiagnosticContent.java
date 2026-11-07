@@ -35,7 +35,7 @@ public final class DiagnosticContent {
         entry(dungeon, "entry", 2, 5, Direction.EAST, true); entry(dungeon, "deep", 12, 7, Direction.WEST, false);
         link(dungeon, 1, 5, SETTLEMENT, "dungeon"); link(dungeon, 14, 5, DEEP, "entry");
         for (int y = 2; y <= 9; y++) if (y != 5) dungeon.setTile(8, y, 1);
-        sign(dungeon, 5, 3, "East leads to the second test room. West returns to the settlement. Chest rewards and trap damage are active tests. Encounters remain pending.");
+        sign(dungeon, 5, 3, "East leads to the second test room. West returns to the settlement. Chest rewards, trap damage and test encounters are active. Battle Enter: engage; Space: select actions.");
         dungeon.addFeature(new PlacedFeature(9, 8, PlacedFeatureType.CHEST, new LootTable(5, 5).addGuaranteed(101, 1), null, QuestFlag.MISC_FLAG_61, null));
         dungeon.addFeature(new PlacedFeature(10, 8, PlacedFeatureType.TRAP, TrapData.standard(), null, QuestFlag.MISC_FLAG_62, null));
         var deep = room(DEEP, "Test dungeon / room 2", 14, 10, true);
@@ -65,7 +65,8 @@ public final class DiagnosticContent {
     private static InteriorMap room(int id, String name, int w, int h, boolean dungeon) {
         var m = new InteriorMap(id, name, dungeon ? InteriorMapType.DUNGEON : InteriorMapType.TOWN, w, h, dungeon ? "dungeon_standard" : "town_standard");
         for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) m.setTile(x, y, x == 0 || y == 0 || x == w-1 || y == h-1 ? dungeon ? 1 : 2 : dungeon ? 0 : 14);
-        m.getSettings().setEncountersEnabled(false); m.getSettings().setTorchRadius(4); return m;
+        m.getSettings().setEncountersEnabled(dungeon); m.getSettings().setEncounterInterval(dungeon ? 6 : 0);
+        m.getSettings().setTorchRadius(4); return m;
     }
     private static void entry(InteriorMap m, String name, int x, int y, Direction facing, boolean selected) { m.addEntrance(new MapEntrance(name, new WorldPosition(x, y), facing)); if (selected) m.setDefaultEntranceId(name); }
     private static void link(InteriorMap m, int x, int y, int target, String name) { m.addFeature(new PlacedFeature(x, y, PlacedFeatureType.STAIRS_LINK, new MapLinkData(target, name))); }

@@ -17,11 +17,14 @@ import java.util.Set;
 
 /** Placeholder 2D presentation shared by all authored local areas. */
 public final class LocalMapScreen implements Screen {
-    public record Visit(LocalMapTraversal traversal, GameState returnState) {}
+    public record Visit(LocalMapTraversal traversal, GameState returnState, com.phantasia.core.logic.LocalEncounterFlow encounters) {
+        public Visit(LocalMapTraversal traversal, GameState returnState) { this(traversal, returnState, null); }
+    }
     private final ScreenManager manager;
     private final GameSession session;
     private final NpcRegistry npcs;
     private final ShopRegistry shops;
+    private final java.util.function.Supplier<List<Monster>> encounterFactory;
     private final Set<Integer> held = new HashSet<>();
     private Visit visit;
     private float cooldown;
@@ -29,10 +32,18 @@ public final class LocalMapScreen implements Screen {
     private static final int CELL = 48;
 
     public LocalMapScreen(ScreenManager manager, GameSession session, NpcRegistry npcs, ShopRegistry shops) {
-        this.manager = manager; this.session = session; this.npcs = npcs; this.shops = shops;
+        this(manager, session, npcs, shops, () -> EncounterFactory.generateEncounter(session.getParty()));
+    }
+    public LocalMapScreen(ScreenManager manager, GameSession session, NpcRegistry npcs, ShopRegistry shops,
+                          java.util.function.Supplier<List<Monster>> encounterFactory) {
+        this.manager = manager; this.session = session; this.npcs = npcs; this.shops = shops; this.encounterFactory = encounterFactory;
     }
     @Override public void onEnter(Object data) {
-        visit = (Visit) data; held.clear(); cooldown = 0; message = "";
+        var incoming = (Visit) data;
+        visit = incoming.encounters() == null ? new Visit(incoming.traversal(), incoming.returnState(),
+                new com.phantasia.core.logic.LocalEncounterFlow(incoming.traversal(), session, encounterFactory)) : incoming;
+        held.clear(); cooldown = 0;
+        message = visit.encounters().retryPendingRewards() > 0 ? "Pending battle gold received." : "";
     }
     @Override public void onExit() { held.clear(); }
     @Override public void onKeyPressed(KeyEvent e) {
@@ -59,6 +70,17 @@ public final class LocalMapScreen implements Screen {
             case CHANGED_MAP -> held.clear(); // arrival never repeats a held input or triggers its own tile
             case EXIT -> manager.fadeTo(visit.returnState(), null);
             default -> {}
+        }
+        if (result.kind() == LocalMapTraversal.Kind.MOVED) {
+            try {
+                var battle = visit.encounters().afterStep(result);
+                if (battle != null) {
+                    held.clear();
+                    manager.fadeTo(GameState.ENCOUNTER_SPLASH, new EncounterSplashScreen.EncounterData(
+                            battle.enemies(), com.phantasia.core.logic.EncounterCondition.NORMAL, session,
+                            new BattleContinuation(battle, visit)));
+                }
+            } catch (IllegalArgumentException ex) { message = "Cannot start encounter: " + ex.getMessage(); }
         }
     }
     private void interactNpc(PlacedNpc placed) {
