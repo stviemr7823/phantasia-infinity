@@ -117,7 +117,9 @@ public final class LocalMapScreen implements Screen {
             var npc = visible ? traversal.visibleNpcAt(x, y) : null;
             if (npc != null) {
                 g.setColor(new Color(100, 175, 240)); g.fillOval(px + 9, py + 9, CELL - 18, CELL - 18);
-                g.setColor(Color.WHITE); g.drawString("#" + npc.npcId(), px + 3, py + CELL - 4);
+                g.setColor(Color.WHITE);
+                var definition = npcs == null ? null : npcs.get(npc.npcId());
+                g.drawString(definition == null ? "#" + npc.npcId() : definition.getName(), px + 3, py - 4);
             }
         }
         int cx = w / 2, cy = h / 2;
