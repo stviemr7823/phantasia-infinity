@@ -58,14 +58,17 @@ The new dependency-free smoke test covers:
 - Independently written v1 interior/NPC/shop fixtures, truncated data, unsupported
   interior versions and trailing interior bytes.
 
-Local result: **448 checks passed**. This host only has Java 17. The local check
-compiled a temporary copy with unrelated Math.clamp calls replaced by equivalent
-min/max calls and List.getFirst calls replaced by get(0), enabling Java 17 switch
-preview support. The changed persistence sources and smoke test were otherwise
-unchanged. This is useful execution evidence, not a native Java 21 build result.
-No UI was launched. The existing core CI workflow now runs this test on Java 21
-and includes the `work/editor-persistence` branch; consult the actual workflow
-result for native build status.
+Java 21 CI result for initial commit `ba280f6`: **448 persistence checks passed**;
+core baseline 17 checks, v5 layout 26 checks and v5 accessors 22 checks also passed.
+The full Gradle suite ran 84 tests and exposed one existing nondeterministic
+formation test: it forced ordinary attacks to hit but left THRUST using random
+dice, while asserting that the front defender died. The test now supplies the
+existing deterministic THRUST seam. Production combat code is unchanged.
+
+This host only has Java 17. A local compatibility-copy execution also passed all
+448 persistence checks, but the native Java 21 CI result supersedes that evidence.
+No UI was launched. Consult the core workflow for the latest full Gradle build
+result after the test-fixture correction.
 
 ## Remaining work
 
