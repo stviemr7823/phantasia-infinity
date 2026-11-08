@@ -32,6 +32,9 @@ public enum GameState {
     /** Isolated native party progression diagnostic; registered by the test launcher. */
     NATIVE_DIAGNOSTIC,
 
+    /** Authored-map diagnostic backed by the native party owner. */
+    NATIVE_LOCAL_MAP,
+
     /** Dungeon roam — interior tile movement with fog of war. */
     DUNGEON,
 

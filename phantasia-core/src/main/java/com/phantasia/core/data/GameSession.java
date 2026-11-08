@@ -33,7 +33,12 @@ import java.util.List;
  * <h3>Thread safety</h3>
  * Not thread-safe. All mutations happen on the game loop thread.
  */
-public class GameSession {
+public class GameSession implements LocalSession {
+
+    public List<PlayerCharacter> localMembers() { return party; }
+    public int getPartyGold() { return ledger.getPartyGold(); }
+    public void addGold(int gold) { ledger.addGold(gold); }
+    public boolean spendGold(int gold) { return ledger.spendGold(gold); }
 
     private final List<PlayerCharacter> party;
     private final PartyLedger           ledger;

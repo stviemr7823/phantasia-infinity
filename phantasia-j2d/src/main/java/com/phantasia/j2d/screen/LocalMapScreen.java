@@ -4,6 +4,9 @@ import com.phantasia.core.data.*;
 import com.phantasia.core.logic.Direction;
 import com.phantasia.core.logic.LocalMapTraversal;
 import com.phantasia.core.logic.LocalFeatureEffects;
+import com.phantasia.core.logic.NativeCampaignV5;
+import com.phantasia.core.logic.NativeLocalEncounterFlow;
+import com.phantasia.j2d.diagnostic.NativeProgressionScreen;
 import com.phantasia.core.model.item.Inventory;
 import com.phantasia.core.model.item.ItemTable;
 import com.phantasia.core.model.*;
@@ -17,11 +20,13 @@ import java.util.Set;
 
 /** Placeholder 2D presentation shared by all authored local areas. */
 public final class LocalMapScreen implements Screen {
-    public record Visit(LocalMapTraversal traversal, GameState returnState, com.phantasia.core.logic.LocalEncounterFlow encounters) {
-        public Visit(LocalMapTraversal traversal, GameState returnState) { this(traversal, returnState, null); }
+    public record Visit(LocalMapTraversal traversal, GameState returnState, com.phantasia.core.logic.LocalEncounterFlow encounters,
+                        NativeLocalEncounterFlow nativeEncounters) {
+        public Visit(LocalMapTraversal traversal, GameState returnState) { this(traversal, returnState, null, null); }
+        public Visit(LocalMapTraversal traversal, GameState returnState, com.phantasia.core.logic.LocalEncounterFlow encounters) { this(traversal, returnState, encounters, null); }
     }
     private final ScreenManager manager;
-    private final GameSession session;
+    private final LocalSession session;
     private final NpcRegistry npcs;
     private final ShopRegistry shops;
     private final java.util.function.Supplier<List<Monster>> encounterFactory;
@@ -36,18 +41,35 @@ public final class LocalMapScreen implements Screen {
     }
     public LocalMapScreen(ScreenManager manager, GameSession session, NpcRegistry npcs, ShopRegistry shops,
                           java.util.function.Supplier<List<Monster>> encounterFactory) {
+        this(manager, (LocalSession) session, npcs, shops, encounterFactory);
+    }
+    /** Native test composition explicitly supplies its legacy-monster Agility (10). */
+    public LocalMapScreen(ScreenManager manager, NativeCampaignV5 session, NpcRegistry npcs, ShopRegistry shops,
+                          java.util.function.Supplier<List<Monster>> encounterFactory) {
+        this(manager, (LocalSession) session, npcs, shops, encounterFactory);
+    }
+    private LocalMapScreen(ScreenManager manager, LocalSession session, NpcRegistry npcs, ShopRegistry shops,
+                          java.util.function.Supplier<List<Monster>> encounterFactory) {
         this.manager = manager; this.session = session; this.npcs = npcs; this.shops = shops; this.encounterFactory = encounterFactory;
     }
     @Override public void onEnter(Object data) {
         var incoming = (Visit) data;
-        visit = incoming.encounters() == null ? new Visit(incoming.traversal(), incoming.returnState(),
-                new com.phantasia.core.logic.LocalEncounterFlow(incoming.traversal(), session, encounterFactory)) : incoming;
+        if (incoming.traversal().session() != session) throw new IllegalArgumentException("Traversal belongs to another party");
+        if (session instanceof NativeCampaignV5 nativeParty) {
+            visit = incoming.nativeEncounters() == null ? new Visit(incoming.traversal(), incoming.returnState(), null,
+                    new NativeLocalEncounterFlow(incoming.traversal(), nativeParty, encounterFactory, ignored -> 10)) : incoming;
+            if (visit.nativeEncounters().campaign() != nativeParty) throw new IllegalArgumentException("Visit belongs to another native party");
+            nativeParty.retryGold();
+        } else visit = incoming.encounters() == null ? new Visit(incoming.traversal(), incoming.returnState(),
+                new com.phantasia.core.logic.LocalEncounterFlow(incoming.traversal(), (GameSession) session, encounterFactory)) : incoming;
         held.clear(); cooldown = 0;
-        message = visit.encounters().retryPendingRewards() > 0 ? "Pending battle gold received." : "";
+        message = visit.encounters() != null && visit.encounters().retryPendingRewards() > 0 ? "Pending battle gold received." : "";
     }
     @Override public void onExit() { held.clear(); }
     @Override public void onKeyPressed(KeyEvent e) {
         if (e.getKeyCode() == KeyEvent.VK_ESCAPE) manager.push(GameState.PAUSE, null);
+        else if (e.getKeyCode() == KeyEvent.VK_P && session instanceof NativeCampaignV5 && !LocalFeatureEffects.partyDefeated(session))
+            nativePreparation(false);
         else held.add(e.getKeyCode());
     }
     @Override public void onKeyReleased(KeyEvent e) { held.remove(e.getKeyCode()); }
@@ -73,11 +95,15 @@ public final class LocalMapScreen implements Screen {
         }
         if (result.kind() == LocalMapTraversal.Kind.MOVED) {
             try {
+                if (visit.nativeEncounters() != null) {
+                    if (visit.nativeEncounters().afterStep(result) != null) { held.clear(); nativePreparation(false); }
+                    return;
+                }
                 var battle = visit.encounters().afterStep(result);
                 if (battle != null) {
                     held.clear();
                     manager.fadeTo(GameState.ENCOUNTER_SPLASH, new EncounterSplashScreen.EncounterData(
-                            battle.enemies(), com.phantasia.core.logic.EncounterCondition.NORMAL, session,
+                            battle.enemies(), com.phantasia.core.logic.EncounterCondition.NORMAL, (GameSession) session,
                             new BattleContinuation(battle, visit)));
                 }
             } catch (IllegalArgumentException ex) { message = "Cannot start encounter: " + ex.getMessage(); }
@@ -88,11 +114,23 @@ public final class LocalMapScreen implements Screen {
         if (npc == null) { message = "Missing NPC definition #" + placed.npcId(); return; }
         switch (npc.getRole()) {
             case MERCHANT -> openShop(shops == null ? null : shops.get(npc.getShopId()));
-            case INNKEEPER -> manager.push(GameState.INN, new InnOverlay.InnData(npc.getName() + "'s Inn", session));
-            case TRAINER -> manager.push(GameState.GUILD, new GuildOverlay.GuildData(npc.getName() + "'s Guild", session));
-            case BANKER -> manager.push(GameState.BANK, new BankOverlay.BankData(npc.getName() + "'s Bank", session));
+            case INNKEEPER -> {
+                if (session instanceof GameSession legacy) manager.push(GameState.INN, new InnOverlay.InnData(npc.getName() + "'s Inn", legacy));
+                else message = "Native inn service is not connected yet.";
+            }
+            case TRAINER -> {
+                if (session instanceof NativeCampaignV5) nativePreparation(true);
+                else manager.push(GameState.GUILD, new GuildOverlay.GuildData(npc.getName() + "'s Guild", (GameSession) session));
+            }
+            case BANKER -> {
+                if (session instanceof GameSession legacy) manager.push(GameState.BANK, new BankOverlay.BankData(npc.getName() + "'s Bank", legacy));
+                else message = "Native bank service is not connected yet.";
+            }
             default -> dialogue(npc);
         }
+    }
+    private void nativePreparation(boolean guild) {
+        held.clear(); manager.switchTo(GameState.NATIVE_DIAGNOSTIC, new NativeProgressionScreen.LocalContext(visit, guild));
     }
     private void dialogue(NpcDefinition npc) {
         manager.push(GameState.DIALOGUE, new DialogueScreen.DialogueData(npc, session,
@@ -172,11 +210,11 @@ public final class LocalMapScreen implements Screen {
         g.setColor(new Color(18, 20, 25, 235)); g.fillRect(18, 15, w - 36, 76); g.fillRect(18, h - 105, w - 36, 88);
         g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 24)); g.setColor(Color.WHITE); g.drawString(map.getName(), 35, 47);
         g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 18));
-        g.drawString("Arrows / WASD: move     Esc: pause", 35, 76);
+        g.drawString("Arrows / WASD: move     Esc: pause" + (session instanceof NativeCampaignV5 ? "     P: prepare techniques" : ""), 35, 76);
         g.drawString(message == null ? "" : message, 35, h - 69);
-        int carried = session.getParty().stream().mapToInt(p -> new Inventory(p).count()).sum();
-        String hp = String.join(", ", session.getParty().stream().map(p -> p.getHp() + "/" + p.getStat(Stat.MAX_HP)).toList());
+        int carried = session.localMembers().stream().mapToInt(p -> (int) java.util.stream.IntStream.range(0, p.inventorySlots()).filter(i -> p.getInventoryItemId(i) != 0).count()).sum();
+        String hp = String.join(", ", session.localMembers().stream().map(p -> p.getHp() + "/" + p.getMaxHp()).toList());
         g.drawString("Map " + map.getId() + "   " + traversal.position() + "   " + traversal.facing()
-                + "   Gold " + session.getLedger().getPartyGold() + "   HP " + hp + "   Packs " + carried + "/" + session.getParty().size() * Inventory.MAX_ITEMS, 35, h - 35);
+                + "   Gold " + session.getPartyGold() + "   HP " + hp + "   Packs " + carried + "/" + session.localMembers().stream().mapToInt(LocalSession.Member::inventorySlots).sum(), 35, h - 35);
     }
 }

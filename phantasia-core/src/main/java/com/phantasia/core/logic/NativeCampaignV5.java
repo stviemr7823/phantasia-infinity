@@ -1,13 +1,15 @@
 package com.phantasia.core.logic;
 
 import com.phantasia.core.model.*;
+import com.phantasia.core.data.*;
+import com.phantasia.core.world.WorldPosition;
 import java.util.*;
 
 /** Single owner for a fresh native party, guild progression and encounter lifecycle.
  * Rules are supplied by the caller: no new canonical progression table is implied.
  * Learned/readied state is campaign state, never written into reserved record bytes.
  */
-public final class NativeCampaignV5 {
+public final class NativeCampaignV5 implements LocalSession {
     private static final Set<Action> TECHNIQUES = Set.of(Action.THRUST, Action.SLASH, Action.LUNGE, Action.AIM_BLOW);
     public record TrainingStep(Job job, int level, long experience, int cost,
                                int hpGain, int mpGain, List<Action> learns) {
@@ -19,7 +21,7 @@ public final class NativeCampaignV5 {
                 throw new IllegalArgumentException("Invalid training step");
         }
     }
-    public static final class Member {
+    public static final class Member implements LocalSession.Member {
         private final PlayerStateV5 state;
         private final PlayerRuntimeV5 runtime;
         private final Set<Action> learned = EnumSet.noneOf(Action.class);
@@ -36,6 +38,21 @@ public final class NativeCampaignV5 {
         public int level() { return state.level(); }
         public Set<Action> learned() { return Set.copyOf(learned); }
         public List<Action> readied() { return readied; }
+        public String getName() { return runtime.name(); }
+        public int getHp() { return runtime.hp(); }
+        public int getMaxHp() { return runtime.maxHp(); }
+        public void setHp(int hp) {
+            if (hp < 0 || hp > state.maxHp()) throw new IllegalArgumentException("HP outside native vitals");
+            state.setHp(hp);
+        }
+        public boolean isAlive() { return runtime.isAlive(); }
+        public boolean isActiveInParty() { return isAlive(); }
+        public int getAgility() { return runtime.attribute(PlayerStateV5.Attribute.AGILITY); }
+        public int getLevel() { return level(); }
+        public int getJob() { return state.jobId(); }
+        public int inventorySlots() { return DataLayoutV5.PC_INVENTORY.length(); }
+        public int getInventoryItemId(int slot) { return state.inventory(slot); }
+        public void setInventoryItem(int slot, int id) { state.setInventory(slot, id); }
     }
     public record TrainingResult(int level, int cost, List<Action> learned) {}
     public record Reward(long experiencePool, long gold, boolean goldClaimed) {}
@@ -44,6 +61,25 @@ public final class NativeCampaignV5 {
     private final int readySlots;
     private long gold, pendingGold;
     private Battle active;
+    private long questFlags;
+    private WorldPosition worldPosition = new WorldPosition(0, 0);
+    private final LocalInteractionState localInteractions = new LocalInteractionState();
+    public List<Member> localMembers() { return party; }
+    public int getPartyGold() { return (int) gold; }
+    public void addGold(int amount) {
+        if (amount < 0 || gold + amount > Integer.MAX_VALUE) throw new IllegalArgumentException("Gold outside purse range");
+        gold += amount;
+    }
+    public boolean spendGold(int amount) {
+        if (amount < 0) throw new IllegalArgumentException("Negative gold cost");
+        if (gold < amount) return false;
+        gold -= amount; return true;
+    }
+    public boolean hasFlag(QuestFlag flag) { return (questFlags & (1L << flag.bit)) != 0; }
+    public void setFlag(QuestFlag flag) { questFlags |= 1L << flag.bit; }
+    public WorldPosition getWorldPosition() { return worldPosition; }
+    public void setPosition(WorldPosition position) { worldPosition = Objects.requireNonNull(position); }
+    public LocalInteractionState getLocalInteractions() { return localInteractions; }
 
     public NativeCampaignV5(List<PlayerStateV5> players, int gold, int readySlots, List<TrainingStep> curriculum) {
         if (players.isEmpty() || players.size() > 6 || gold < 0 || readySlots < 1 || readySlots > TECHNIQUES.size())
@@ -112,7 +148,7 @@ public final class NativeCampaignV5 {
                 || !member.learned.containsAll(copy)) throw new IllegalArgumentException("Invalid readied techniques");
         member.readied = copy;
     }
-    private void retryGold() {
+    public void retryGold() {
         long collected = Math.min(pendingGold, Integer.MAX_VALUE - gold);
         gold += collected; pendingGold -= collected;
     }

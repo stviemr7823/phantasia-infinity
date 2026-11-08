@@ -11,8 +11,10 @@ import java.util.List;
 
 /** Isolated native-v5 vertical slice. Fixture progression values are not game balance. */
 public final class NativeProgressionScreen implements Screen {
+    public record LocalContext(com.phantasia.j2d.screen.LocalMapScreen.Visit visit, boolean guild) {}
     private final ScreenManager manager;
     private NativeCampaignV5 campaign;
+    private LocalContext local;
     private int selected, targetIndex;
     private String message = "Win a test battle, train at the guild, then ready the learned technique.";
     private List<String> log = List.of();
@@ -28,7 +30,15 @@ public final class NativeProgressionScreen implements Screen {
                 new NativeCampaignV5.TrainingStep(Job.FIGHTER, 3, 40, 20, 4, 1, List.of(Action.SLASH))));
         selected = 0; targetIndex = 0; log = List.of();
     }
-    @Override public void onEnter(Object data) { pressed.clear(); }
+    @Override public void onEnter(Object data) {
+        pressed.clear(); local = data instanceof LocalContext context ? context : null;
+        if (local != null) {
+            if (local.visit().nativeEncounters().campaign() != campaign) throw new IllegalArgumentException("Different native campaign");
+            if (campaign.activeBattle() != null && campaign.activeBattle().outcome() == CombatOutcome.ONGOING) defaultOrders();
+            log = List.of(); message = campaign.activeBattle() != null ? "Review orders, then Enter to run one round."
+                    : local.guild() ? "Guild: G trains the selected member. Esc returns to the area." : "Prepare techniques here. Visit a trainer to learn more. Esc returns to the area.";
+        }
+    }
     @Override public void onExit() { pressed.clear(); }
     @Override public void update(float dt) {}
     @Override public void onMouseClicked(MouseEvent e) {}
@@ -39,19 +49,24 @@ public final class NativeProgressionScreen implements Screen {
         catch (IllegalArgumentException | IllegalStateException ex) { message = ex.getMessage(); }
     }
     private void handle(int key) {
-        if (key == KeyEvent.VK_R) { reset(); message = "Fresh native test party."; return; }
+        if (key == KeyEvent.VK_R) {
+            if (local != null) { message = "Return to the area and use Esc / R to reset the whole map session."; return; }
+            reset(); message = "Fresh native test party."; return;
+        }
         var battle = campaign.activeBattle();
         if (key == KeyEvent.VK_UP) { selected = Math.max(0, selected - 1); return; }
         if (key == KeyEvent.VK_DOWN) { selected = Math.min(campaign.party().size() - 1, selected + 1); return; }
         var member = campaign.party().get(selected);
         if (battle == null) {
             switch (key) {
-                case KeyEvent.VK_ESCAPE -> manager.switchTo(GameState.WORLD_ROAM, null);
+                case KeyEvent.VK_ESCAPE -> manager.switchTo(local == null ? GameState.WORLD_ROAM : GameState.NATIVE_LOCAL_MAP, local == null ? null : local.visit());
                 case KeyEvent.VK_B -> {
+                    if (local != null) { message = "Battles begin while exploring the dungeon."; return; }
                     campaign.startBattle(List.of(EncounterFactory.buildMonster("Native foe", 12, 1, 40)), ignored -> 10);
                     targetIndex = 0; defaultOrders(); message = "Review orders, then Enter to run one round."; log = List.of();
                 }
                 case KeyEvent.VK_G -> {
+                    if (local != null && !local.guild()) { message = "Visit a guild trainer to gain a level and learn techniques."; return; }
                     var result = campaign.train(member);
                     message = member.runtime().name() + " trained to level " + result.level() + "; learned " + result.learned();
                 }
@@ -67,7 +82,12 @@ public final class NativeProgressionScreen implements Screen {
             return;
         }
         if (battle.outcome() != CombatOutcome.ONGOING) {
-            if (key == KeyEvent.VK_ENTER) { battle.acknowledge(); message = "Returned to preparation. Guild training: G."; }
+            if (key == KeyEvent.VK_ENTER) {
+                if (local != null) {
+                    local.visit().nativeEncounters().returnFromBattle(battle);
+                    manager.switchTo(GameState.NATIVE_LOCAL_MAP, local.visit());
+                } else { battle.acknowledge(); message = "Returned to preparation. Guild training: G."; }
+            }
             return;
         }
         if (key == KeyEvent.VK_ENTER) {
@@ -112,8 +132,9 @@ public final class NativeProgressionScreen implements Screen {
         g.setColor(new Color(240, 210, 125)); g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 34));
         g.drawString("Native-v5 / battle, guild and readied techniques", 70, 75);
         g.setColor(Color.WHITE); g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 23));
-        g.drawString("Non-canon test rules. Separate party from the map mockup; no saves.", 70, 117);
-        g.drawString("Gold " + campaign.gold() + "   Pending " + campaign.pendingGold() + "   R: reset native test", 70, 156);
+        g.drawString(local == null ? "Non-canon test rules. N at the menu explores with this native party; no saves."
+                : "Same native party as exploration. " + (local.guild() ? "Guild training." : "Field preparation / battle."), 70, 117);
+        g.drawString("Gold " + campaign.gold() + "   Pending " + campaign.pendingGold() + (local == null ? "   R: reset native test" : "   Reset through the map pause menu."), 70, 156);
         var battle = campaign.activeBattle();
         int y = 210;
         for (int i = 0; i < campaign.party().size(); i++) {
@@ -135,7 +156,8 @@ public final class NativeProgressionScreen implements Screen {
         }
         g.setColor(Color.WHITE);
         if (battle == null) {
-            g.drawString("Up/Down: member   B: battle   G: train selected member   Esc: menu", 70, y + 20);
+            g.drawString(local == null ? "Up/Down: member   B: battle   G: train selected member   Esc: menu"
+                    : "Up/Down: member   " + (local.guild() ? "G: guild training   " : "") + "Esc: return to area", 70, y + 20);
             g.drawString("Outside battle: 1 Thrust / 2 Slash / 3 Lunge / 4 Aim Blow toggle readied (two slots)", 70, y + 57);
         } else {
             g.drawString("A: attack   D: defend   1/2: readied slot   T: target   Enter: confirm round / result", 70, y + 20);

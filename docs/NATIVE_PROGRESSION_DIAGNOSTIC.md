@@ -1,15 +1,16 @@
 # Native party, guild progression and readied techniques
 
-The diagnostic launcher now has a separate native-v5 test screen. Press **V** at
-the entry menu after launching `bash run_mockup.sh` with JDK 21. This is an
-executable progression slice, not a migration of the authored map screen.
+Press **V** at the entry menu after launching `bash run_mockup.sh` with JDK 21
+for the native-v5 party test. **N** now explores authored areas with this same
+native party; see [NATIVE_AUTHORED_AREAS.md](NATIVE_AUTHORED_AREAS.md). The Enter
+route and normal launcher remain legacy.
 
 NativeCampaignV5 owns detached native player records, one runtime per member,
 party gold, learned/readied state and a single active battle. The same native
 players receive damage, XP, level-ups and technique selections. No conversion to
 legacy PlayerCharacter or synchronization between competing player records occurs.
 Returning to the menu retains the native test party; R or whole-application reset
-creates a fresh one. The authored-map mockup keeps its separate legacy session.
+creates a fresh one. The Enter comparison route keeps its separate legacy session.
 
 ## Test route
 
@@ -86,9 +87,9 @@ sets and pending gold are runtime campaign state, not hidden in the 64-byte
 record's reserved space. There is no campaign snapshot/load format yet. The
 diagnostic does not touch normal saves.
 
-Next: introduce a shared party interface for authored-map vitals, inventory,
-treasure/traps and services, then route those maps to this same native owner.
-Persist the complete campaign (including learned/readied state and pending
+The shared LocalSession interface now connects authored maps, treasure/traps,
+dialogue and merchants to this native owner; mapped trainers use native training.
+Next persist the complete campaign (including learned/readied state and pending
 rewards) before claiming restart continuity. Existing generated dungeons retain
 their previous path.
 

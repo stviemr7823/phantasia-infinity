@@ -2,20 +2,19 @@ package com.phantasia.core.logic;
 
 import com.phantasia.core.data.*;
 import com.phantasia.core.model.PlacedNpc;
-import com.phantasia.core.model.item.Inventory;
 import com.phantasia.core.world.*;
 import com.phantasia.core.world.ServiceData.*;
 import java.util.*;
 
 /** Shared authored-map movement. Local grids are Y-down; world coordinates stay
- * in GameSession while position, facing and exploration belong to this visit.
+ * in its LocalSession while position, facing and exploration belong to this visit.
  * Map definitions are never modified by traversal.
  */
 public final class LocalMapTraversal {
     public enum Kind { MOVED, BLOCKED, NPC, FEATURE, CHANGED_MAP, EXIT }
     public record Result(Kind kind, PlacedNpc npc, PlacedFeature feature, String message) {}
     private final InteriorMapRegistry registry;
-    private final GameSession session;
+    private final LocalSession session;
     private final WorldPosition worldReturn;
     private final java.util.function.Predicate<WorldPosition> worldReturnAllowed;
     private final Map<Integer, BitSet> explored = new HashMap<>();
@@ -30,10 +29,10 @@ public final class LocalMapTraversal {
     void suspendForEncounter(boolean suspended) { encounterSuspended = suspended; }
     public boolean encounterSuspended() { return encounterSuspended; }
 
-    public LocalMapTraversal(InteriorMapRegistry registry, GameSession session, int mapId, String entranceId) {
+    public LocalMapTraversal(InteriorMapRegistry registry, LocalSession session, int mapId, String entranceId) {
         this(registry, session, mapId, entranceId, p -> p.x() >= 0 && p.y() >= 0);
     }
-    public LocalMapTraversal(InteriorMapRegistry registry, GameSession session, int mapId, String entranceId,
+    public LocalMapTraversal(InteriorMapRegistry registry, LocalSession session, int mapId, String entranceId,
                              java.util.function.Predicate<WorldPosition> worldReturnAllowed) {
         this.worldReturnAllowed = Objects.requireNonNull(worldReturnAllowed);
         this.registry = Objects.requireNonNull(registry); this.session = Objects.requireNonNull(session);
@@ -44,6 +43,7 @@ public final class LocalMapTraversal {
         arrive(registry.resolveLink(new MapLinkData(mapId, key)));
     }
     public InteriorMap map() { return map; }
+    public LocalSession session() { return session; }
     public WorldPosition position() { return position; }
     public Direction facing() { return facing; }
     public boolean hasExited() { return exited; }
@@ -130,7 +130,7 @@ public final class LocalMapTraversal {
     private boolean canUnlock(PlacedFeature feature) {
         if (!(feature.serviceData() instanceof LockData lock)) return false;
         return lock.requiredFlag() != null && session.hasFlag(lock.requiredFlag())
-                || lock.requiredItemId() != 0 && session.getParty().stream().anyMatch(p -> new Inventory(p).contains(lock.requiredItemId()));
+                || lock.requiredItemId() != 0 && session.localMembers().stream().anyMatch(p -> java.util.stream.IntStream.range(0, p.inventorySlots()).anyMatch(i -> p.getInventoryItemId(i) == lock.requiredItemId()));
     }
     private void consume(PlacedFeature f) { if (f != null && f.consumedFlag() != null) session.setFlag(f.consumedFlag()); }
     /** Call only after completing the interaction's actual effect (e.g. displaying a sign).

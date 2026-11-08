@@ -41,12 +41,13 @@ reset or quit. Overworld battles retain their existing overworld return/quit rou
 
 ## Scope
 
-These screens still operate on the legacy party model. Native-v5 party ownership,
-learned/readied techniques and final campaign progression are separate integration
-work. A separate [native progression diagnostic](NATIVE_PROGRESSION_DIAGNOSTIC.md)
-now exercises native battles, guild level-ups and learned/readied techniques with
-its own party. The local-map diagnostic supplies no spells and disables Cast; this does not remove
-spells from a normal game with a populated spell bank. The fixture is non-canon.
+The Enter comparison route still uses the legacy party and return machinery
+above. The N diagnostic route uses [native authored areas](NATIVE_AUTHORED_AREAS.md)
+with the same native party for exploration, guild training and battles. V accesses
+that same native owner through the [progression test](NATIVE_PROGRESSION_DIAGNOSTIC.md).
+Neither route migrates the normal launcher or legacy generated dungeons. The
+legacy fixture supplies no spells and disables Cast; normal games with a populated
+spell bank retain spells. All fixture content is non-canon.
 
 ## Verification
 

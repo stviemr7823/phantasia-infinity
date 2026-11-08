@@ -17,8 +17,9 @@ dialogue (first press reveals text if it is still appearing). Esc pauses. R in
 the pause/entry menu resets the party, flags, gold and overlay stack; Q quits.
 The window close button also quits.
 
-V at the entry menu opens a separate native-v5 battle/guild/technique test.
-Its native party is independent of the authored-map test party; see
+N at the entry menu opens authored areas with the native party. V opens the
+battle/guild/technique test for that same native party. Enter retains the legacy
+comparison party. See [NATIVE_AUTHORED_AREAS.md](NATIVE_AUTHORED_AREAS.md) and
 [NATIVE_PROGRESSION_DIAGNOSTIC.md](NATIVE_PROGRESSION_DIAGNOSTIC.md) for controls,
 test curriculum and integration limits.
 
@@ -49,7 +50,8 @@ before launch. Temporary fixture files are removed on exit.
 Chest rewards, trap effects and legacy battle screens are active. Dungeon rooms
 start a diagnostic battle after six ordinary moves; settlements and castle areas
 are peaceful. Victory, escape and defeat return to the retained local visit.
-Native-v5 party ownership and readied-technique integration remain pending. The
+The Enter comparison route remains legacy; N uses native ownership, mapped guild
+training and readied techniques. The
 trainer uses the existing service overlay; these test names do not fill undecided
 story content.
 
@@ -99,7 +101,7 @@ this creates the actual window, renders thirty frames and closes automatically.
 That is a window lifecycle check, not a human play-through. Target-machine sizing,
 input feel and manual gameplay review remain pending.
 
-Next: connect authored maps to native party ownership and add persistent campaign snapshots.
+Next: persistent native campaign snapshots and native inn/bank services.
 
 Encounter pacing, reward receipts and return paths are detailed in
 [LOCAL_ENCOUNTERS.md](LOCAL_ENCOUNTERS.md).
