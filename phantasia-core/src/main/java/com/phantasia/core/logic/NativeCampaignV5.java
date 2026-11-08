@@ -315,6 +315,11 @@ public final class NativeCampaignV5 implements LocalSession {
         gold += collected; pendingGold -= collected;
     }
     public Battle startBattle(List<Monster> enemies, java.util.function.ToIntFunction<Monster> enemyAgility) {
+        return startBattle(enemies, enemyAgility, FormulaEngine::rollEscape);
+    }
+    /** Package-private seam; callers of the public API cannot force escape outcomes. */
+    Battle startBattle(List<Monster> enemies, java.util.function.ToIntFunction<Monster> enemyAgility,
+                       java.util.function.Predicate<PlayerRuntimeV5> escapeRoll) {
         outsideBattle();
         if (party.stream().noneMatch(m -> m.runtime.isAlive())) throw new IllegalStateException("Party has fallen");
         var copy = List.copyOf(enemies);
@@ -322,7 +327,7 @@ public final class NativeCampaignV5 implements LocalSession {
         long xp = copy.stream().mapToLong(Monster::getExperience).sum();
         long treasure = copy.stream().mapToLong(Monster::getTreasure).sum();
         Math.addExact(pendingGold, treasure);
-        var combat = CombatRoundV5.agilityOrdered(party.stream().map(Member::runtime).toList(), copy, enemyAgility);
+        var combat = CombatRoundV5.agilityOrdered(party.stream().map(Member::runtime).toList(), copy, enemyAgility, escapeRoll);
         active = new Battle(combat, copy, xp, treasure); return active;
     }
     public final class Battle {
@@ -345,12 +350,12 @@ public final class NativeCampaignV5 implements LocalSession {
         public void select(Member member, Action action, Monster target) {
             requireActive(); requireMember(member); Objects.requireNonNull(action);
             if (!member.runtime.isAlive()) throw new IllegalArgumentException("Inactive member");
-            if (action != Action.ATTACK && action != Action.PARRY && !member.readied.contains(action))
+            if (action != Action.ATTACK && action != Action.PARRY && action != Action.RUN && !member.readied.contains(action))
                 throw new IllegalArgumentException("Technique is not readied");
             CombatRoundV5.PlayerOrder order;
-            if (action == Action.PARRY) {
-                if (target != null) throw new IllegalArgumentException("Defend takes no target");
-                order = CombatRoundV5.PlayerOrder.parry(member.runtime);
+            if (action == Action.PARRY || action == Action.RUN) {
+                if (target != null) throw new IllegalArgumentException("Defend/run takes no target");
+                order = action == Action.RUN ? CombatRoundV5.PlayerOrder.run(member.runtime) : CombatRoundV5.PlayerOrder.parry(member.runtime);
             } else {
                 if (target == null) target = enemies.stream().filter(Monster::isAlive)
                         .filter(e -> action == Action.LUNGE ? combat.canLungeReach(member.runtime, e)

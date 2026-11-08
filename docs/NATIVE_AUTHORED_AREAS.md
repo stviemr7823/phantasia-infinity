@@ -38,8 +38,8 @@ Movement/interactions remain suspended until the native battle's terminal result
 is acknowledged. Return preserves the traversal instance, map position, facing,
 fog and world anchor. Early acknowledgement fails; stale results cannot release a
 newer encounter. The battle awards XP/gold to the exact exploration members once.
-Native combat currently supports victory/defeat; escape is still absent from this
-native slice (the legacy comparison path retains its escape behavior).
+Native combat now supports [escape](NATIVE_ESCAPE.md) as well as victory/defeat,
+returning the intact roster without victory rewards.
 
 Bump Test trainer in the settlement to open native guild training. G trains the
 selected member when XP and gold qualify and grants the curriculum's techniques
@@ -61,7 +61,7 @@ this campaign directly. Authored [guild-counter pricing/caps](NATIVE_GUILD_STOCK
 | Native areas | Arrows/WASD move; P prepare; Esc pause |
 | Trainer | Up/Down member; G guild level-up; number keys ready learned moves; Esc area |
 | Field preparation | Up/Down member; number keys change readied moves; Esc area |
-| Native battle | A attack; D defend; 1/2 readied move; T target; Enter confirm/acknowledge |
+| Native battle | A attack; D defend; F run; 1/2 readied move; T target; Enter confirm/acknowledge |
 | Map pause | Enter/Esc resume; R reset both diagnostic sessions; Q quit |
 
 ## Persistence and limits
@@ -91,4 +91,4 @@ learned moves in later battles, menu/world return, reset and headless rendering.
 Previous suites, the Java 21 Gradle build and the AWT/Xvfb window lifecycle remain
 in CI. Manual desktop play-through and final phone controls remain pending.
 
-Next: native battle escape and a decision on making this route the default.
+Next: native combat items and a decision on making this route the default.

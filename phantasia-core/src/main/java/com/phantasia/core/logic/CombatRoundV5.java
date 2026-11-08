@@ -19,13 +19,14 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiPredicate;
 import java.util.function.ToIntFunction;
+import java.util.function.Predicate;
 
 /**
  * Headless, incremental v5 round coordinator. Players use typed v5 storage,
  * while monsters temporarily retain their existing typed v4 wrapper.
  * This does not replace the production v4 CombatManager.
  *
- * ATTACK, THRUST, SLASH, LUNGE, AIM_BLOW, RANGED_ATTACK, PARRY, CAST and NONE are supported player orders.
+ * ATTACK, THRUST, SLASH, LUNGE, AIM_BLOW, RANGED_ATTACK, PARRY, RUN, CAST and NONE are supported player orders.
  * Monster AI is a simple attack against the first living party member.
  */
 public final class CombatRoundV5 {
@@ -40,8 +41,11 @@ public final class CombatRoundV5 {
                     && action != Action.LUNGE
                     && action != Action.RANGED_ATTACK
                     && action != Action.PARRY
+                    && action != Action.RUN
                     && action != Action.CAST && action != Action.NONE)
                 throw new IllegalArgumentException("Unsupported v5 order: " + action);
+            if (action == Action.RUN && (enemyTarget != null || allyTarget != null || spell != null || rank != null))
+                throw new IllegalArgumentException("Run takes no target, spell or rank");
         }
 
         public static PlayerOrder attack(PlayerRuntimeV5 actor, Monster target, CombatRank rank) {
@@ -74,6 +78,10 @@ public final class CombatRoundV5 {
         public static PlayerOrder parry(PlayerRuntimeV5 actor) {
             return new PlayerOrder(actor, Action.PARRY, null, null, null, null);
         }
+        /** One actor's retreat attempt; success withdraws the intact party. */
+        public static PlayerOrder run(PlayerRuntimeV5 actor) {
+            return new PlayerOrder(actor, Action.RUN, null, null, null, null);
+        }
         public static PlayerOrder idle(PlayerRuntimeV5 actor) {
             return new PlayerOrder(actor, Action.NONE, null, null, null, CombatRank.FRONT);
         }
@@ -90,10 +98,17 @@ public final class CombatRoundV5 {
     private final BiPredicate<PlayerRuntimeV5, Monster> aimedHitRoll;
     private final BiPredicate<Monster, PlayerRuntimeV5> monsterHitRoll;
     private final ToIntFunction<Monster> monsterDamageRoll;
+    private final Predicate<PlayerRuntimeV5> escapeRoll;
+    private boolean escaped;
 
     /** Native campaign order: Agility, stable input-order ties, existing move penalties. */
     public static CombatRoundV5 agilityOrdered(List<PlayerRuntimeV5> party, List<Monster> enemies,
                                               ToIntFunction<Monster> enemyAgility) {
+        return agilityOrdered(party, enemies, enemyAgility, FormulaEngine::rollEscape);
+    }
+    /** Package-private escape seam for deterministic campaign tests. */
+    static CombatRoundV5 agilityOrdered(List<PlayerRuntimeV5> party, List<Monster> enemies,
+                                        ToIntFunction<Monster> enemyAgility, Predicate<PlayerRuntimeV5> escapeRoll) {
         Objects.requireNonNull(enemyAgility);
         Map<Monster, Integer> speeds = new IdentityHashMap<>();
         for (var enemy : enemies) {
@@ -104,7 +119,9 @@ public final class CombatRoundV5 {
         return new CombatRoundV5(party, enemies, Map.of(), Map.of(),
                 actor -> actor instanceof PlayerRuntimeV5 player ? player.attribute(Attribute.AGILITY)
                         : speeds.get((Monster) actor),
-                FormulaEngine::playerRollToHit);
+                FormulaEngine::playerRollToHit, FormulaEngine::monsterRollToHit, FormulaEngine::calculateMonsterDamage,
+                (actor, target) -> Dice.chance(thrustHitChance(actor, target)),
+                (actor, target) -> Dice.chance(aimBlowHitChance(actor, target)), escapeRoll);
     }
 
     /** Compatibility constructor: all party members initially occupy the front rank. */
@@ -180,6 +197,21 @@ public final class CombatRoundV5 {
                   ToIntFunction<Monster> monsterDamageRoll,
                   BiPredicate<PlayerRuntimeV5, Monster> thrustHitRoll,
                   BiPredicate<PlayerRuntimeV5, Monster> aimedHitRoll) {
+        this(party, enemies, assignedRanks, assignedEnemyRanks, initiativeRoll, playerHitRoll, monsterHitRoll,
+                monsterDamageRoll, thrustHitRoll, aimedHitRoll, FormulaEngine::rollEscape);
+    }
+    /** Full deterministic seam; production factories retain the established escape roll. */
+    CombatRoundV5(List<PlayerRuntimeV5> party, List<Monster> enemies,
+                  Map<PlayerRuntimeV5, CombatRank> assignedRanks,
+                  Map<Monster, CombatRank> assignedEnemyRanks,
+                  ToIntFunction<Object> initiativeRoll,
+                  BiPredicate<PlayerRuntimeV5, Monster> playerHitRoll,
+                  BiPredicate<Monster, PlayerRuntimeV5> monsterHitRoll,
+                  ToIntFunction<Monster> monsterDamageRoll,
+                  BiPredicate<PlayerRuntimeV5, Monster> thrustHitRoll,
+                  BiPredicate<PlayerRuntimeV5, Monster> aimedHitRoll,
+                  Predicate<PlayerRuntimeV5> escapeRoll) {
+        this.escapeRoll = Objects.requireNonNull(escapeRoll, "escapeRoll");
         this.aimedHitRoll = Objects.requireNonNull(aimedHitRoll, "aimedHitRoll");
         this.thrustHitRoll = Objects.requireNonNull(thrustHitRoll, "thrustHitRoll");
         this.initiativeRoll = Objects.requireNonNull(initiativeRoll, "initiativeRoll");
@@ -321,7 +353,10 @@ public final class CombatRoundV5 {
                 PlayerOrder order = planned.get(player);
                 if (order == null || order.action() == Action.NONE
                         || order.action() == Action.PARRY) continue;
-                if (order.action() == Action.CAST) resolveCast(order, events);
+                if (order.action() == Action.RUN) {
+                    escaped = escapeRoll.test(player);
+                    events.add(new CombatEvent.FleeAttempt(player.name(), escaped));
+                } else if (order.action() == Action.CAST) resolveCast(order, events);
                 else if (order.action() == Action.RANGED_ATTACK) resolveRanged(order, events);
                 else resolveAttack(order, events);
             } else if (actor instanceof Monster monster) {
@@ -386,10 +421,10 @@ public final class CombatRoundV5 {
                     || order.allyTarget() != null || order.spell() != null
                     || order.rank() != null || !hasBow(order.actor()))
                 throw new IllegalArgumentException("Ranged attack requires an equipped bow and encounter enemy");
-        } else if (order.action() == Action.PARRY) {
+        } else if (order.action() == Action.PARRY || order.action() == Action.RUN) {
             if (order.enemyTarget() != null || order.allyTarget() != null
                     || order.spell() != null || order.rank() != null)
-                throw new IllegalArgumentException("Parry takes no target, spell or rank");
+                throw new IllegalArgumentException("Parry/run takes no target, spell or rank");
         } else if (order.action() == Action.CAST) {
             Spell spell = Objects.requireNonNull(order.spell(), "spell");
             switch (spell.getEffectType()) {
@@ -605,6 +640,7 @@ public final class CombatRoundV5 {
     }
 
     public CombatOutcome outcome() {
+        if (escaped) return CombatOutcome.ESCAPED;
         if (party.stream().noneMatch(PlayerRuntimeV5::isAlive)) return CombatOutcome.DEFEAT;
         if (enemies.stream().noneMatch(Monster::isAlive)) return CombatOutcome.VICTORY;
         return CombatOutcome.ONGOING;

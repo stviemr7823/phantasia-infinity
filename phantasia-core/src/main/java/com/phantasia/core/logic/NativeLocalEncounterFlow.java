@@ -10,13 +10,20 @@ public final class NativeLocalEncounterFlow {
     private final NativeCampaignV5 campaign;
     private final Supplier<List<Monster>> enemies;
     private final ToIntFunction<Monster> agility;
+    private final Predicate<com.phantasia.core.model.PlayerRuntimeV5> escapeRoll;
     private final Map<Integer, Integer> paces = new HashMap<>();
     private long lastMovement;
     private NativeCampaignV5.Battle active;
     public NativeLocalEncounterFlow(LocalMapTraversal traversal, NativeCampaignV5 campaign,
                                     Supplier<List<Monster>> enemies, ToIntFunction<Monster> agility) {
+        this(traversal, campaign, enemies, agility, FormulaEngine::rollEscape);
+    }
+    NativeLocalEncounterFlow(LocalMapTraversal traversal, NativeCampaignV5 campaign,
+                             Supplier<List<Monster>> enemies, ToIntFunction<Monster> agility,
+                             Predicate<com.phantasia.core.model.PlayerRuntimeV5> escapeRoll) {
         this.traversal = Objects.requireNonNull(traversal); this.campaign = Objects.requireNonNull(campaign);
         this.enemies = Objects.requireNonNull(enemies); this.agility = Objects.requireNonNull(agility);
+        this.escapeRoll = Objects.requireNonNull(escapeRoll);
         if (traversal.session() != campaign) throw new IllegalArgumentException("Traversal belongs to another party");
     }
     public NativeCampaignV5 campaign() { return campaign; }
@@ -52,7 +59,7 @@ public final class NativeLocalEncounterFlow {
         if (settings.getEncounterInterval() <= 0) throw new IllegalArgumentException("Encounter interval must be positive");
         int id = traversal.map().getId(), count = paces.getOrDefault(id, 0) + 1;
         if (count < settings.getEncounterInterval()) { paces.put(id, count); return null; }
-        active = campaign.startBattle(enemies.get(), agility);
+        active = campaign.startBattle(enemies.get(), agility, escapeRoll);
         paces.put(id, 0); traversal.suspendForEncounter(true); return active;
     }
     /** Caller retains the receipt identity; stale UI results cannot release a newer battle. */

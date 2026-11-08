@@ -103,24 +103,24 @@ public final class NativeProgressionScreen implements Screen {
             var result = battle.confirmRound(); log = new CombatNarrator().narrateRound(result);
             if (result.isCombatOver()) {
                 var reward = battle.settle(); message = result.outcome() + ": XP pool " + reward.experiencePool()
-                        + ", gold " + reward.gold() + ". Enter: return to preparation.";
+                        + ", gold " + reward.gold() + ". Enter: " + (local == null ? "return to preparation." : "return to area.");
             } else { defaultOrders(); message = "Review the next round. No action runs until Enter."; }
         } else if (key == KeyEvent.VK_T) {
             var living = battle.enemies().stream().filter(Monster::isAlive).toList();
             targetIndex = (targetIndex + 1) % living.size();
             var previous = battle.rows().get(selected).order();
-            if (previous == null || previous.action() == Action.PARRY)
+            if (previous == null || previous.action() == Action.PARRY || previous.action() == Action.RUN)
                 throw new IllegalArgumentException("Choose an attack before overriding its target");
             battle.select(member, previous.action(), living.get(targetIndex));
             message = "Override target: " + living.get(targetIndex).getName();
         } else {
-            Action action = key == KeyEvent.VK_A ? Action.ATTACK : key == KeyEvent.VK_D ? Action.PARRY : null;
+            Action action = key == KeyEvent.VK_A ? Action.ATTACK : key == KeyEvent.VK_D ? Action.PARRY : key == KeyEvent.VK_F ? Action.RUN : null;
             int slot = key - KeyEvent.VK_1;
             if (slot >= 0 && slot < member.readied().size()) action = member.readied().get(slot);
             if (action != null) {
                 var living = battle.enemies().stream().filter(Monster::isAlive).toList();
-                battle.select(member, action, action == Action.PARRY ? null : living.get(Math.min(targetIndex, living.size() - 1)));
-                message = member.runtime().name() + ": " + action;
+                battle.select(member, action, action == Action.PARRY || action == Action.RUN ? null : living.get(Math.min(targetIndex, living.size() - 1)));
+                message = member.runtime().name() + ": " + action + (action == Action.RUN ? " (" + FormulaEngine.escapeChance(member.runtime()) + "% chance). Success withdraws the party." : "");
             }
         }
     }
@@ -170,7 +170,7 @@ public final class NativeProgressionScreen implements Screen {
                     : "Up/Down: member   " + (local.guild() ? "G: guild training   " : "") + "Esc: return to area", 70, y + 20);
             g.drawString("Outside battle: 1 Thrust / 2 Slash / 3 Lunge / 4 Aim Blow toggle readied (two slots)", 70, y + 57);
         } else {
-            g.drawString("A: attack   D: defend   1/2: readied slot   T: target   Enter: confirm round / result", 70, y + 20);
+            g.drawString("A: attack   D: defend   F: run   1/2: readied slot   T: target   Enter: confirm / result", 70, y + 20);
             g.drawString("Enemies: " + String.join(", ", battle.enemies().stream().map(e -> e.getName() + " HP " + e.getHp()).toList()), 70, y + 57);
         }
         g.setColor(new Color(240, 210, 125)); g.drawString(message, 70, y + 103);

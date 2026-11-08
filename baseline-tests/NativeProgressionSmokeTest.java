@@ -34,7 +34,7 @@ public final class NativeProgressionSmokeTest {
         battle.select(a,Action.ATTACK,second);same(second,battle.rows().get(0).order().enemyTarget(),"optional override chooses another encounter foe");
         battle.select(b,Action.PARRY,null);second.setHp(0);check(!battle.canConfirm(),"defeated override requires review before next confirmation");
         rejects(battle::confirmRound,"stale target cannot execute");battle.select(a,Action.ATTACK,null);check(battle.canConfirm(),"automatic retry produces complete plan");same(first,battle.rows().get(0).order().enemyTarget(),"automatic retry selects remaining foe");
-        rejects(()->battle.select(a,Action.RUN,null),"unsupported basic command cannot bypass technique gate");
+        rejects(()->battle.select(a,Action.CAST,null),"unsupported basic command cannot bypass technique gate");
     }
     private static void training() {
         var input=player("Source",1); var c=new NativeCampaignV5(List.of(input),40,1,curriculum()); var m=c.party().get(0);

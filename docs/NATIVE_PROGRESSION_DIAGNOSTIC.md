@@ -27,7 +27,7 @@ creates a fresh one. The Enter comparison route keeps its separate legacy sessio
 | --- | --- |
 | Preparation | Up/Down member; B battle; G guild training; Esc entry menu |
 | Preparation | 1 Thrust, 2 Slash, 3 Lunge, 4 Aim Blow toggle learned techniques |
-| Battle planning | A attack; D defend; 1/2 readied slot; T override attack target |
+| Battle planning | A attack; D defend; F run; 1/2 readied slot; T override attack target |
 | Round/result | Enter runs one reviewed round or acknowledges a terminal result |
 | Native test | R starts a fresh native test party |
 
@@ -47,16 +47,17 @@ after changing preparation. Readied selection is atomic, has a configurable slot
 limit, rejects duplicates/unlearned moves and is locked throughout combat,
 including the unacknowledged result screen. Training is likewise locked in battle.
 
-Battle selection admits Attack, Defend and this member's readied physical
+Battle selection admits Attack, Defend, Run and this member's readied physical
 techniques. One order replaces the member's previous order; it does not add another
 action. The underlying resolver still permits its low-level actions for existing
-tests; campaign callers use the gated Battle API. Spells, items, escape and special
+tests; campaign callers use the gated Battle API. Spells, items and special
 companions are outside this initial native screen.
 
 The new Agility-ordered factory fixes initiative by player Agility and explicit
 caller-supplied enemy Agility, with stable input-order ties and the resolver's
 existing Aim Blow penalty. It does not change legacy/public-constructor combat.
-Legacy monster storage has no native Agility field; the diagnostic supplies 10
+[Run](NATIVE_ESCAPE.md) uses the existing Agility-based formula and withdraws the
+intact party on success. Legacy monster storage has no native Agility field; the diagnostic supplies 10
 explicitly rather than interpreting an unrelated byte as speed. Hit/damage rolls
 remain ordinary dice.
 

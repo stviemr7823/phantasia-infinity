@@ -640,7 +640,7 @@ class CombatRoundV5Test {
     }
 
     @Test
-    void rejectsDuplicateCombatantsAndUnsupportedActions() {
+    void rejectsDuplicateCombatantsAndTargetedRunOrders() {
         PlayerRuntimeV5 character = player("Sage", 50, 5);
         Monster enemy = monster("Orc", 10);
         assertThrows(IllegalArgumentException.class, () ->
