@@ -60,6 +60,53 @@ public final class NativeCampaignV5 implements LocalSession {
     private final List<TrainingStep> curriculum;
     private final int readySlots;
     private long gold, pendingGold;
+    private int bankGold;
+    public int bankGold() { return bankGold; }
+    public record RestQuote(long cost, int recipients, int revived) {}
+    public RestQuote quoteRest(com.phantasia.core.world.ServiceData.InnData terms) {
+        outsideBattle(); Objects.requireNonNull(terms);
+        if (terms.costPerHp() < 0) throw new IllegalArgumentException("Negative inn rate");
+        long cost = 0; int recipients = 0, revived = 0;
+        for (var m : party) if (m.isAlive() || terms.restoredDead()) {
+            recipients++; if (!m.isAlive()) revived++;
+            cost += (long) (m.state.maxHp() - m.state.hp()) * terms.costPerHp() + m.state.maxMp() - m.state.mp();
+        }
+        return new RestQuote(cost, recipients, revived);
+    }
+    /** Requote immediately before committing. Dead members remain untouched unless explicitly authored. */
+    public RestQuote rest(com.phantasia.core.world.ServiceData.InnData terms) {
+        var quote = quoteRest(terms);
+        if (quote.recipients() == 0 || quote.cost() > gold) throw new IllegalStateException("No eligible guests or insufficient inn gold");
+        gold -= quote.cost();
+        for (var m : party) if (m.isAlive() || terms.restoredDead()) {
+            m.state.setHp(m.state.maxHp()); m.state.setMp(m.state.maxMp()); m.runtime.setAsleep(false);
+        }
+        retryGold(); return quote;
+    }
+    public record BankTransfer(int gross, int fee, int credited) {}
+    /** Amount is the gross debit. Percentage fees round up once; the remainder is credited. */
+    public static BankTransfer quoteBank(boolean deposit, int amount, com.phantasia.core.world.ServiceData.BankData terms) {
+        Objects.requireNonNull(terms);
+        if (amount <= 0 || terms.depositFeePercent() < 0 || terms.depositFeePercent() > 100
+                || terms.withdrawalFeePercent() < 0 || terms.withdrawalFeePercent() > 100)
+            throw new IllegalArgumentException("Bank amount or fee outside range");
+        int rate = deposit ? terms.depositFeePercent() : terms.withdrawalFeePercent();
+        int fee = (int) (((long) amount * rate + 99) / 100);
+        return new BankTransfer(amount, fee, amount - fee);
+    }
+    public BankTransfer transferBank(boolean deposit, int amount, com.phantasia.core.world.ServiceData.BankData terms) {
+        outsideBattle(); var quote = quoteBank(deposit, amount, terms);
+        if (deposit) {
+            if (gold < amount || (long) bankGold + quote.credited() > Integer.MAX_VALUE)
+                throw new IllegalStateException("Insufficient purse gold or bank capacity");
+            gold -= amount; bankGold += quote.credited();
+        } else {
+            if (bankGold < amount || gold + quote.credited() > Integer.MAX_VALUE)
+                throw new IllegalStateException("Insufficient bank gold or purse capacity");
+            bankGold -= amount; gold += quote.credited();
+        }
+        retryGold(); return quote;
+    }
     private Battle active;
     private long questFlags;
     private WorldPosition worldPosition = new WorldPosition(0, 0);
@@ -111,7 +158,7 @@ public final class NativeCampaignV5 implements LocalSession {
         public MemberSnapshot { record = record.clone(); learned = List.copyOf(learned); readied = List.copyOf(readied); }
         @Override public byte[] record() { return record.clone(); }
     }
-    public record Snapshot(List<MemberSnapshot> members, int gold, long pendingGold, int readySlots,
+    public record Snapshot(List<MemberSnapshot> members, int gold, int bankGold, long pendingGold, int readySlots,
                            List<TrainingStep> curriculum, long questFlags, WorldPosition worldPosition,
                            Map<LocalInteractionState.Key, LootTable.LootResult> pendingChests) {
         public Snapshot {
@@ -120,17 +167,23 @@ public final class NativeCampaignV5 implements LocalSession {
             pendingChests.forEach((k, v) -> copy.put(k, new LootTable.LootResult(v.gold(), List.copyOf(v.items()))));
             pendingChests = Map.copyOf(copy);
         }
+        /** Source-compatible version-one snapshot construction. */
+        public Snapshot(List<MemberSnapshot> members, int gold, long pendingGold, int readySlots,
+                        List<TrainingStep> curriculum, long questFlags, WorldPosition worldPosition,
+                        Map<LocalInteractionState.Key, LootTable.LootResult> pendingChests) {
+            this(members, gold, 0, pendingGold, readySlots, curriculum, questFlags, worldPosition, pendingChests);
+        }
     }
     /** Battle results must be acknowledged too: receipts cannot be lost across a checkpoint. */
     public Snapshot snapshot() {
         outsideBattle();
         return new Snapshot(party.stream().map(m -> new MemberSnapshot(m.state.toBytes(),
                 m.learned.stream().sorted(Comparator.comparing(Enum::name)).toList(), m.readied)).toList(),
-                (int) gold, pendingGold, readySlots, curriculum, questFlags, worldPosition, localInteractions.snapshot());
+                (int) gold, bankGold, pendingGold, readySlots, curriculum, questFlags, worldPosition, localInteractions.snapshot());
     }
     /** Build and validate a detached owner; never patch the running campaign during import. */
     public static NativeCampaignV5 restore(Snapshot data) {
-        if (data.pendingGold() < 0 || data.pendingGold() > Long.MAX_VALUE - Integer.MAX_VALUE
+        if (data.bankGold() < 0 || data.pendingGold() < 0 || data.pendingGold() > Long.MAX_VALUE - Integer.MAX_VALUE
                 || data.pendingChests().size() > 10000) throw new IllegalArgumentException("Invalid pending rewards");
         var states = data.members().stream().map(m -> PlayerStateV5.fromBytes(m.record())).toList();
         var restored = new NativeCampaignV5(states, data.gold(), data.readySlots(), data.curriculum(), false);
@@ -159,7 +212,7 @@ public final class NativeCampaignV5 implements LocalSession {
             }
             member.learned.addAll(expected); restored.ready(member, saved.readied());
         }
-        restored.pendingGold = data.pendingGold(); restored.questFlags = data.questFlags(); restored.worldPosition = data.worldPosition();
+        restored.bankGold = data.bankGold(); restored.pendingGold = data.pendingGold(); restored.questFlags = data.questFlags(); restored.worldPosition = data.worldPosition();
         data.pendingChests().forEach((key, loot) -> {
             if (key.mapId() < 0 || key.x() < 0 || key.y() < 0 || loot.gold() < 0 || loot.items().size() > 10000)
                 throw new IllegalArgumentException("Invalid pending chest");

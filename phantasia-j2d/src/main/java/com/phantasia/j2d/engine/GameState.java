@@ -35,6 +35,9 @@ public enum GameState {
     /** Authored-map diagnostic backed by the native party owner. */
     NATIVE_LOCAL_MAP,
 
+    /** Native inn/bank overlay using authored service terms. */
+    NATIVE_SERVICE,
+
     /** Dungeon roam — interior tile movement with fog of war. */
     DUNGEON,
 

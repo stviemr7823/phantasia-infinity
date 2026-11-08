@@ -22,7 +22,7 @@ not used. The parent directory must already exist.
 | Native players | Exact 64-byte v5 records: IDs, names, attributes, level, HP/MP, XP, equipment and all ten pack slots |
 | Preparation | Learned techniques and the ordered readied selection for each member |
 | Progression | Explicit training curriculum and readied-slot limit used by this campaign |
-| Shared campaign | Party gold, pending combat gold, all 64 quest flags and world position |
+| Shared campaign | Purse, bank gold, pending combat gold, all 64 quest flags and world position |
 | Pending treasure | Cached rolls keyed by map and feature position, preserving exact gold/items |
 | Local visit | Map, position, facing, world-return anchor, movement count and fog for every visited map |
 | Encounter pacing | Per-map step counters and the last counted movement stamp |
@@ -43,7 +43,7 @@ legacy comparison party and its visit are not part of a native checkpoint.
 
 ## Validation and replacement
 
-NativeSaveManager uses a distinct PNS1 envelope with version 1, explicit payload
+NativeSaveManager uses a distinct PNS1 envelope with writer version 2 (version-1 reader retained), explicit payload
 length and SHA-256 checksum. The complete file is limited to 8 MiB. Counts and
 enum names are bounded; native player kinds, reserved bytes, vitals, known items,
 equipment eligibility, IDs, curriculum, learned/readied state, pending rewards,
@@ -85,5 +85,6 @@ old-file preservation on failed save and temporary-file cleanup. The earlier
 native/legacy map and combat suites, Java 21 Gradle tests/compilation and Xvfb
 window lifecycle remain in CI. Human desktop play-through remains pending.
 
-Next: native inn/bank services and remaining authored service settings. Mid-battle
+Native [inn/bank services](NATIVE_INN_BANK.md) now use this checkpoint state. Next:
+authored guild settings and finite shop stock. Mid-battle
 snapshots and making the native route the normal launcher remain separate work.

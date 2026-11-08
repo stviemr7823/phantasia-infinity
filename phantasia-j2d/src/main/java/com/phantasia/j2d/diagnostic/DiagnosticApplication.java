@@ -47,6 +47,7 @@ public final class DiagnosticApplication {
         var next = new ScreenManager(); var partyScreen = new NativeProgressionScreen(next, campaign);
         var mapScreen = nativeMap(next, campaign);
         next.register(GameState.NATIVE_DIAGNOSTIC, partyScreen); next.register(GameState.NATIVE_LOCAL_MAP, mapScreen);
+        next.register(GameState.NATIVE_SERVICE, new NativeServiceOverlay(next));
         next.register(GameState.LOCAL_MAP, new LocalMapScreen(next, legacy, content.npcs(), content.shops(),
                 () -> List.of(EncounterFactory.buildMonster("Test creature", 12, 1, 25))));
         var spells = new SpellFactory();

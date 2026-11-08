@@ -51,9 +51,8 @@ performing training remotely. Battles and preparation share the same native part
 screen, with context determining which operations are available.
 
 The standalone B/R shortcuts are disabled in mapped contexts: movement starts
-battles and the map pause menu resets the complete diagnostic session. Native
-inn/bank NPC services are explicitly unavailable for now; they never route into
-legacy HP or gold. Custom inn/guild/bank counter settings remain pending as before.
+battles and the map pause menu resets the complete diagnostic session. Native [inn/bank NPCs and authored counters](NATIVE_INN_BANK.md) now operate on
+this campaign directly. Custom guild-counter pricing/caps remain pending.
 
 ## Controls
 
@@ -75,7 +74,7 @@ using the new owner. The map pause reset replaces both test sessions and all vis
 
 Native [outside-combat checkpoints](NATIVE_CHECKPOINTS.md) now preserve the campaign
 and current visit when enabled with --native-save PATH. This remains opt-in
-diagnostic wiring: normal-game launcher migration, native inn/bank services, final
+diagnostic wiring: normal-game launcher migration, authored guild-counter settings, final
 curriculum and authored encounter tables remain pending. The party interface does
 not change legacy saves or the existing generated-dungeon path.
 
@@ -93,4 +92,4 @@ learned moves in later battles, menu/world return, reset and headless rendering.
 Previous suites, the Java 21 Gradle build and the AWT/Xvfb window lifecycle remain
 in CI. Manual desktop play-through and final phone controls remain pending.
 
-Next: complete native services and decide when to make this route the default.
+Next: authored guild settings, shop stock and a decision on making this route the default.

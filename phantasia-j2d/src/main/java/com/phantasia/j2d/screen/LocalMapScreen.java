@@ -118,7 +118,7 @@ public final class LocalMapScreen implements Screen {
             case MERCHANT -> openShop(shops == null ? null : shops.get(npc.getShopId()));
             case INNKEEPER -> {
                 if (session instanceof GameSession legacy) manager.push(GameState.INN, new InnOverlay.InnData(npc.getName() + "'s Inn", legacy));
-                else message = "Native inn service is not connected yet.";
+                else openNativeService(npc.getName() + "'s Inn", com.phantasia.core.world.ServiceData.InnData.standard(), null, null);
             }
             case TRAINER -> {
                 if (session instanceof NativeCampaignV5) nativePreparation(true);
@@ -126,13 +126,25 @@ public final class LocalMapScreen implements Screen {
             }
             case BANKER -> {
                 if (session instanceof GameSession legacy) manager.push(GameState.BANK, new BankOverlay.BankData(npc.getName() + "'s Bank", legacy));
-                else message = "Native bank service is not connected yet.";
+                else openNativeService(npc.getName() + "'s Bank", null, com.phantasia.core.world.ServiceData.BankData.standard(), null);
             }
             default -> dialogue(npc);
         }
     }
     private void nativePreparation(boolean guild) {
         held.clear(); manager.switchTo(GameState.NATIVE_DIAGNOSTIC, new NativeProgressionScreen.LocalContext(visit, guild));
+    }
+    private void openNativeService(String name, com.phantasia.core.world.ServiceData.InnData inn,
+                                   com.phantasia.core.world.ServiceData.BankData bank, PlacedFeature feature) {
+        try {
+            var campaign = (NativeCampaignV5) session;
+            if (inn != null) campaign.quoteRest(inn); else NativeCampaignV5.quoteBank(true, 1, bank);
+            var data = new NativeServiceOverlay.Data(campaign, name, inn, bank,
+                    () -> feature == null || visit.traversal().featureAvailable(feature),
+                    () -> { if (feature != null) visit.traversal().completeInteraction(feature); },
+                    feature != null && feature.consumedFlag() != null);
+            held.clear(); manager.push(GameState.NATIVE_SERVICE, data);
+        } catch (IllegalArgumentException | IllegalStateException ex) { message = ex.getMessage(); }
     }
     private void dialogue(NpcDefinition npc) {
         manager.push(GameState.DIALOGUE, new DialogueScreen.DialogueData(npc, session,
@@ -155,7 +167,17 @@ public final class LocalMapScreen implements Screen {
             case SHOP_COUNTER -> openShop(f.serviceData() instanceof ShopInventory shop ? shop
                     : f.serviceData() instanceof Integer id && shops != null ? shops.get(id) : null);
             case CHEST, TRAP -> showEffect(visit.traversal().interact(f));
-            case INN_COUNTER, GUILD_COUNTER, BANK_COUNTER -> message = "Service counter — custom settings pending.";
+            case INN_COUNTER -> {
+                if (session instanceof NativeCampaignV5 && f.serviceData() instanceof com.phantasia.core.world.ServiceData.InnData inn)
+                    openNativeService("Inn", inn, null, f);
+                else message = "Inn counter settings unavailable for this party.";
+            }
+            case BANK_COUNTER -> {
+                if (session instanceof NativeCampaignV5 && f.serviceData() instanceof com.phantasia.core.world.ServiceData.BankData bank)
+                    openNativeService("Bank", null, bank, f);
+                else message = "Bank counter settings unavailable for this party.";
+            }
+            case GUILD_COUNTER -> message = "Guild counter custom settings pending.";
             default -> message = "Interaction unavailable.";
         }
     }

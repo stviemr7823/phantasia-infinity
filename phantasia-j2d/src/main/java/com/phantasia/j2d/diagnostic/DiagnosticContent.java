@@ -29,6 +29,8 @@ public final class DiagnosticContent {
         sign(town, 3, 4, "Diagnostic area only. East: two dungeon rooms. North: castle. Speak to Test guide for gate permission. West exit returns to the test menu.");
         link(town, 20, 6, DUNGEON, "entry"); link(town, 10, 1, COURTYARD, "entry");
         town.addNpc(new PlacedNpc(GUIDE, 8, 8, Direction.NORTH)); town.addNpc(new PlacedNpc(MERCHANT, 6, 6, Direction.WEST)); town.addNpc(new PlacedNpc(TRAINER, 6, 10, Direction.NORTH));
+        town.addFeature(new PlacedFeature(15, 9, PlacedFeatureType.INN_COUNTER, new InnData(2, "Test inn: rest here before returning to the dungeon.", false)));
+        town.addFeature(new PlacedFeature(17, 9, PlacedFeatureType.BANK_COUNTER, BankData.standard()));
         for (int y = 8; y <= 11; y++) town.setTile(12, y, 2);
         for (int x = 2; x <= 5; x++) town.setTile(x, 11, 15);
         var dungeon = room(DUNGEON, "Test dungeon / room 1", 16, 12, true);

@@ -14,7 +14,7 @@ import java.util.function.Predicate;
 /** Versioned native checkpoints. No Java object deserialization and no legacy-save fallback. */
 public final class NativeSaveManager {
     private NativeSaveManager() {}
-    private static final int MAGIC = 0x504E5331, VERSION = 1;
+    private static final int MAGIC = 0x504E5331, VERSION = 2;
     public static final int MAX_BYTES = 8 * 1024 * 1024;
     public record Checkpoint(String contentId, NativeCampaignV5.Snapshot campaign,
                              LocalMapTraversal.Snapshot visit, NativeLocalEncounterFlow.Snapshot encounters) {
@@ -78,7 +78,7 @@ public final class NativeSaveManager {
     public static byte[] encode(Checkpoint saved) throws IOException {
         try {
             var payload = new LimitedBytes(); var out = new DataOutputStream(payload); out.writeUTF(saved.contentId());
-            var c = saved.campaign(); out.writeInt(c.gold()); out.writeLong(c.pendingGold()); out.writeInt(c.readySlots());
+            var c = saved.campaign(); out.writeInt(c.gold()); out.writeInt(c.bankGold()); out.writeLong(c.pendingGold()); out.writeInt(c.readySlots());
             out.writeLong(c.questFlags()); position(out, c.worldPosition());
             count(out, c.curriculum().size(), 1524);
             for (var step : c.curriculum()) {
@@ -119,12 +119,13 @@ public final class NativeSaveManager {
         if (bytes.length < 44 || bytes.length > MAX_BYTES) throw new IOException("Invalid native save size");
         try {
             var header = new DataInputStream(new ByteArrayInputStream(bytes));
-            if (header.readInt() != MAGIC || header.readInt() != VERSION) throw new IOException("Unsupported native save header/version");
+            if (header.readInt() != MAGIC) throw new IOException("Unsupported native save header");
+            int version = header.readInt(); if (version < 1 || version > VERSION) throw new IOException("Unsupported native save version");
             int size = header.readInt(); if (size != bytes.length - 44) throw new IOException("Truncated native save or trailing bytes");
             byte[] body = header.readNBytes(size), digest = header.readNBytes(32);
             if (!MessageDigest.isEqual(hash(body), digest)) throw new IOException("Native save checksum mismatch");
             var in = new DataInputStream(new ByteArrayInputStream(body)); String content = text(in);
-            int gold = in.readInt(); long pendingGold = in.readLong(); int slots = in.readInt(); long flags = in.readLong(); var world = position(in);
+            int gold = in.readInt(), bank = version >= 2 ? in.readInt() : 0; long pendingGold = in.readLong(); int slots = in.readInt(); long flags = in.readLong(); var world = position(in);
             int steps = count(in, 1524); var curriculum = new ArrayList<NativeCampaignV5.TrainingStep>();
             for (int i = 0; i < steps; i++) curriculum.add(new NativeCampaignV5.TrainingStep(value(Job.class, text(in)), in.readInt(), in.readLong(), in.readInt(), in.readInt(), in.readInt(), actions(in)));
             int players = count(in, 6); var members = new ArrayList<NativeCampaignV5.MemberSnapshot>();
@@ -153,7 +154,7 @@ public final class NativeSaveManager {
                 pace = new NativeLocalEncounterFlow.Snapshot(paces, last);
             }
             if (in.available() != 0) throw new IOException("Trailing native payload");
-            return new Checkpoint(content, new NativeCampaignV5.Snapshot(members, gold, pendingGold, slots, curriculum, flags, world, chests), visit, pace);
+            return new Checkpoint(content, new NativeCampaignV5.Snapshot(members, gold, bank, pendingGold, slots, curriculum, flags, world, chests), visit, pace);
         } catch (IllegalArgumentException ex) { throw new IOException("Invalid native save value: " + ex.getMessage(), ex); }
     }
     private static void count(DataOutput out, int n, int max) throws IOException { if (n < 0 || n > max) throw new IOException("Save count outside limit"); out.writeInt(n); }
