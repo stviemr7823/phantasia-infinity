@@ -61,6 +61,23 @@ public final class NativeCampaignV5 implements LocalSession {
     private final int readySlots;
     private long gold, pendingGold;
     private int bankGold;
+    private NativeShopState shopState = new NativeShopState();
+    public NativeShopState shopState() { return shopState; }
+    public record ShopReceipt(int itemId, int price, int remaining) {}
+    public ShopReceipt buy(String catalog, ShopInventory shop, int row, Member member) {
+        outsideBattle(); requireMember(member);
+        if (party.stream().noneMatch(Member::isAlive)) throw new IllegalStateException("The party has fallen");
+        var quote = shopState.quote(catalog, shop, row, this::hasFlag);
+        if (!quote.priceInRange()) throw new IllegalStateException("Shop price exceeds the purse limit");
+        if (!quote.visible() || quote.remaining() == 0) throw new IllegalStateException("This listing is unavailable or sold out");
+        if (gold < quote.price()) throw new IllegalStateException("Not enough gold");
+        int free = -1; for (int i = 0; i < member.inventorySlots(); i++) if (member.getInventoryItemId(i) == 0) { free = i; break; }
+        if (free < 0) throw new IllegalStateException("The selected member's pack is full");
+        int item = shop.getEntries().get(row).itemId();
+        shopState.record(catalog, shop, row); // may reject the state budget before any inventory/gold mutation
+        member.setInventoryItem(free, item); gold -= quote.price(); retryGold();
+        return new ShopReceipt(item, quote.price(), shopState.quote(catalog, shop, row, this::hasFlag).remaining());
+    }
     public int bankGold() { return bankGold; }
     public record RestQuote(long cost, int recipients, int revived) {}
     public RestQuote quoteRest(com.phantasia.core.world.ServiceData.InnData terms) {
@@ -160,12 +177,17 @@ public final class NativeCampaignV5 implements LocalSession {
     }
     public record Snapshot(List<MemberSnapshot> members, int gold, int bankGold, long pendingGold, int readySlots,
                            List<TrainingStep> curriculum, long questFlags, WorldPosition worldPosition,
-                           Map<LocalInteractionState.Key, LootTable.LootResult> pendingChests) {
+                           Map<LocalInteractionState.Key, LootTable.LootResult> pendingChests, List<NativeShopState.Purchase> shopPurchases) {
         public Snapshot {
-            members = List.copyOf(members); curriculum = List.copyOf(curriculum); Objects.requireNonNull(worldPosition);
+            members = List.copyOf(members); curriculum = List.copyOf(curriculum); shopPurchases = List.copyOf(shopPurchases); Objects.requireNonNull(worldPosition);
             var copy = new HashMap<LocalInteractionState.Key, LootTable.LootResult>();
             pendingChests.forEach((k, v) -> copy.put(k, new LootTable.LootResult(v.gold(), List.copyOf(v.items()))));
             pendingChests = Map.copyOf(copy);
+        }
+        public Snapshot(List<MemberSnapshot> members, int gold, int bankGold, long pendingGold, int readySlots,
+                        List<TrainingStep> curriculum, long questFlags, WorldPosition worldPosition,
+                        Map<LocalInteractionState.Key, LootTable.LootResult> pendingChests) {
+            this(members, gold, bankGold, pendingGold, readySlots, curriculum, questFlags, worldPosition, pendingChests, List.of());
         }
         /** Source-compatible version-one snapshot construction. */
         public Snapshot(List<MemberSnapshot> members, int gold, long pendingGold, int readySlots,
@@ -179,7 +201,7 @@ public final class NativeCampaignV5 implements LocalSession {
         outsideBattle();
         return new Snapshot(party.stream().map(m -> new MemberSnapshot(m.state.toBytes(),
                 m.learned.stream().sorted(Comparator.comparing(Enum::name)).toList(), m.readied)).toList(),
-                (int) gold, bankGold, pendingGold, readySlots, curriculum, questFlags, worldPosition, localInteractions.snapshot());
+                (int) gold, bankGold, pendingGold, readySlots, curriculum, questFlags, worldPosition, localInteractions.snapshot(), shopState.snapshot());
     }
     /** Build and validate a detached owner; never patch the running campaign during import. */
     public static NativeCampaignV5 restore(Snapshot data) {
@@ -187,6 +209,7 @@ public final class NativeCampaignV5 implements LocalSession {
                 || data.pendingChests().size() > 10000) throw new IllegalArgumentException("Invalid pending rewards");
         var states = data.members().stream().map(m -> PlayerStateV5.fromBytes(m.record())).toList();
         var restored = new NativeCampaignV5(states, data.gold(), data.readySlots(), data.curriculum(), false);
+        restored.shopState = NativeShopState.restore(data.shopPurchases());
         for (int i = 0; i < states.size(); i++) {
             var state = states.get(i); var member = restored.party.get(i); var saved = data.members().get(i);
             if ((state.statusFlags() & ~PlayerRuntimeV5.STATUS_ASLEEP) != 0) throw new IllegalArgumentException("Unknown player status");
@@ -244,25 +267,41 @@ public final class NativeCampaignV5 implements LocalSession {
                 && s.level() == member.level() + 1).findFirst().orElse(null);
     }
     public boolean canTrain(Member member) {
+        return canTrain(member, null);
+    }
+    public long trainingCost(Member member, com.phantasia.core.world.ServiceData.GuildData terms) {
         var step = nextTraining(member);
+        if (terms == null) return step == null ? 0 : step.cost();
+        if (terms.trainingCostBase() < 0 || terms.trainingCostScale() < 0 || terms.maxLevel() < 0)
+            throw new IllegalArgumentException("Invalid guild terms");
+        return terms.trainingCostBase() + (long) member.level() * terms.trainingCostScale();
+    }
+    public boolean canTrain(Member member, com.phantasia.core.world.ServiceData.GuildData terms) {
+        var step = nextTraining(member);
+        long cost = trainingCost(member, terms);
         return active == null && member.runtime.isAlive() && !member.runtime.isAsleep() && step != null
-                && member.runtime.experience() >= step.experience() && gold >= step.cost()
+                && (terms == null || terms.maxLevel() == 0 || step.level() <= terms.maxLevel())
+                && member.runtime.experience() >= step.experience() && gold >= cost
                 && (long) member.state.maxHp() + step.hpGain() <= 65535
                 && (long) member.state.maxMp() + step.mpGain() <= 65535;
     }
     /** All checks precede the level, resource, gold and learned-set commit. */
     public TrainingResult train(Member member) {
+        return train(member, null);
+    }
+    public TrainingResult train(Member member, com.phantasia.core.world.ServiceData.GuildData terms) {
         requireMember(member); outsideBattle();
-        if (!canTrain(member)) throw new IllegalStateException("Guild training requirements are not met");
+        if (!canTrain(member, terms)) throw new IllegalStateException("Guild training requirements or level cap are not met");
         var step = nextTraining(member);
+        int cost = (int) trainingCost(member, terms); // canTrain proved it fits the purse
         var newlyLearned = step.learns().stream().filter(a -> !member.learned.contains(a)).toList();
-        gold -= step.cost(); member.state.setLevel(step.level());
+        gold -= cost; member.state.setLevel(step.level());
         member.state.setMaxHp(member.state.maxHp() + step.hpGain());
         member.state.setHp(member.state.hp() + step.hpGain());
         member.state.setMaxMp(member.state.maxMp() + step.mpGain());
         member.state.setMp(member.state.mp() + step.mpGain());
         member.learned.addAll(newlyLearned); retryGold();
-        return new TrainingResult(step.level(), step.cost(), newlyLearned);
+        return new TrainingResult(step.level(), cost, newlyLearned);
     }
     /** Replace the full selection, atomically, anywhere outside battle. */
     public void ready(Member member, List<Action> techniques) {

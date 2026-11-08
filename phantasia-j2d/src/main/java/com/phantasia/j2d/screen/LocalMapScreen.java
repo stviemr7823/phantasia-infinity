@@ -164,8 +164,12 @@ public final class LocalMapScreen implements Screen {
                 sign.getDialogue().addNode(new DialogueNode(content, null, null, null));
                 dialogue(sign); visit.traversal().completeInteraction(f);
             }
-            case SHOP_COUNTER -> openShop(f.serviceData() instanceof ShopInventory shop ? shop
-                    : f.serviceData() instanceof Integer id && shops != null ? shops.get(id) : null);
+            case SHOP_COUNTER -> {
+                if (f.serviceData() instanceof ShopInventory inline)
+                    manager.push(GameState.SHOP, new ShopOverlay.ShopData(inline, session,
+                            com.phantasia.core.logic.NativeShopState.inline(visit.traversal().map().getId(), f.x(), f.y())));
+                else openShop(f.serviceData() instanceof Integer id && shops != null ? shops.get(id) : null);
+            }
             case CHEST, TRAP -> showEffect(visit.traversal().interact(f));
             case INN_COUNTER -> {
                 if (session instanceof NativeCampaignV5 && f.serviceData() instanceof com.phantasia.core.world.ServiceData.InnData inn)
@@ -177,7 +181,11 @@ public final class LocalMapScreen implements Screen {
                     openNativeService("Bank", null, bank, f);
                 else message = "Bank counter settings unavailable for this party.";
             }
-            case GUILD_COUNTER -> message = "Guild counter custom settings pending.";
+            case GUILD_COUNTER -> {
+                if (session instanceof NativeCampaignV5 && f.serviceData() instanceof com.phantasia.core.world.ServiceData.GuildData terms) {
+                    held.clear(); manager.switchTo(GameState.NATIVE_DIAGNOSTIC, new NativeProgressionScreen.LocalContext(visit, true, terms, f));
+                } else message = "Guild counter settings unavailable for this party.";
+            }
             default -> message = "Interaction unavailable.";
         }
     }

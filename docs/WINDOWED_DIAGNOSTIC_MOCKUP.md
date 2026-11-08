@@ -103,8 +103,8 @@ input feel and manual gameplay review remain pending.
 
 Optional native checkpoint save/load is enabled with --native-save PATH; see
 [NATIVE_CHECKPOINTS.md](NATIVE_CHECKPOINTS.md). Native [inn/bank counters](NATIVE_INN_BANK.md)
-are active at settlement positions (15,9) and (17,9). Next: guild-counter settings
-and shop stock.
+are active at settlement positions (15,9) and (17,9). The guild counter at (19,9) and shop finite/one-time listings are also active;
+see [NATIVE_GUILD_STOCK.md](NATIVE_GUILD_STOCK.md). Next: native battle escape.
 
 Encounter pacing, reward receipts and return paths are detailed in
 [LOCAL_ENCOUNTERS.md](LOCAL_ENCOUNTERS.md).

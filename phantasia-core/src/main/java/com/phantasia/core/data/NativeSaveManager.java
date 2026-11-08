@@ -14,7 +14,7 @@ import java.util.function.Predicate;
 /** Versioned native checkpoints. No Java object deserialization and no legacy-save fallback. */
 public final class NativeSaveManager {
     private NativeSaveManager() {}
-    private static final int MAGIC = 0x504E5331, VERSION = 2;
+    private static final int MAGIC = 0x504E5331, VERSION = 3;
     public static final int MAX_BYTES = 8 * 1024 * 1024;
     public record Checkpoint(String contentId, NativeCampaignV5.Snapshot campaign,
                              LocalMapTraversal.Snapshot visit, NativeLocalEncounterFlow.Snapshot encounters) {
@@ -28,8 +28,21 @@ public final class NativeSaveManager {
                          NativeLocalEncounterFlow.Snapshot encounters) {}
     public static Loaded restore(Checkpoint checkpoint, String expectedContent, InteriorMapRegistry maps,
                                   Predicate<WorldPosition> allowedWorld) {
+        return restore(checkpoint, expectedContent, maps, new ShopRegistry(), allowedWorld);
+    }
+    public static Loaded restore(Checkpoint checkpoint, String expectedContent, InteriorMapRegistry maps,
+                                  ShopRegistry shops, Predicate<WorldPosition> allowedWorld) {
         if (!checkpoint.contentId().equals(expectedContent)) throw new IllegalArgumentException("Save belongs to different authored content");
         var campaign = NativeCampaignV5.restore(checkpoint.campaign());
+        campaign.shopState().validateCatalogs(key -> {
+            try {
+                var parts = key.split(":");
+                if (parts[0].equals("shop")) return shops.get(Integer.parseInt(parts[1]));
+                var map = maps.get(Integer.parseInt(parts[1]));
+                var feature = map == null ? null : map.getFeatureAt(Integer.parseInt(parts[2]), Integer.parseInt(parts[3]));
+                return feature != null && feature.featureType() == PlacedFeatureType.SHOP_COUNTER && feature.serviceData() instanceof ShopInventory inline ? inline : null;
+            } catch (NumberFormatException ex) { throw new IllegalArgumentException("Invalid saved shop identity", ex); }
+        });
         if (!allowedWorld.test(campaign.getWorldPosition())) throw new IllegalArgumentException("Invalid saved world position");
         campaign.getLocalInteractions().snapshot().forEach((key, loot) -> {
             var map = maps.get(key.mapId()); var feature = map == null ? null : map.getFeatureAt(key.x(), key.y());
@@ -45,7 +58,11 @@ public final class NativeSaveManager {
     /** Atomic replacement only. Unsupported atomic moves fail with the previous file intact. */
     public static void save(Path path, Checkpoint checkpoint, String expectedContent, InteriorMapRegistry maps,
                             Predicate<WorldPosition> allowedWorld) throws IOException {
-        try { restore(checkpoint, expectedContent, maps, allowedWorld); }
+        save(path, checkpoint, expectedContent, maps, new ShopRegistry(), allowedWorld);
+    }
+    public static void save(Path path, Checkpoint checkpoint, String expectedContent, InteriorMapRegistry maps,
+                            ShopRegistry shops, Predicate<WorldPosition> allowedWorld) throws IOException {
+        try { restore(checkpoint, expectedContent, maps, shops, allowedWorld); }
         catch (IllegalArgumentException | IllegalStateException ex) { throw new IOException("Invalid native checkpoint: " + ex.getMessage(), ex); }
         byte[] bytes = encode(checkpoint);
         Path target = path.toAbsolutePath().normalize(), parent = target.getParent();
@@ -60,10 +77,14 @@ public final class NativeSaveManager {
     }
     public static Loaded load(Path path, String expectedContent, InteriorMapRegistry maps,
                               Predicate<WorldPosition> allowedWorld) throws IOException {
+        return load(path, expectedContent, maps, new ShopRegistry(), allowedWorld);
+    }
+    public static Loaded load(Path path, String expectedContent, InteriorMapRegistry maps,
+                              ShopRegistry shops, Predicate<WorldPosition> allowedWorld) throws IOException {
         byte[] bytes;
         try (var in = Files.newInputStream(path)) { bytes = in.readNBytes(MAX_BYTES + 1); }
         if (bytes.length > MAX_BYTES) throw new IOException("Native save exceeds size limit");
-        try { return restore(decode(bytes), expectedContent, maps, allowedWorld); }
+        try { return restore(decode(bytes), expectedContent, maps, shops, allowedWorld); }
         catch (IllegalArgumentException | IllegalStateException ex) { throw new IOException("Invalid native save: " + ex.getMessage(), ex); }
     }
     private static byte[] hash(byte[] bytes) {
@@ -98,6 +119,10 @@ public final class NativeSaveManager {
                 var key = chest.getKey(); out.writeInt(key.mapId()); out.writeInt(key.x()); out.writeInt(key.y());
                 out.writeInt(chest.getValue().gold()); count(out, chest.getValue().items().size(), 10000);
                 for (var item : chest.getValue().items()) { out.writeInt(item.itemId()); out.writeInt(item.quantity()); out.writeInt(item.weight()); }
+            }
+            count(out, c.shopPurchases().size(), 10000);
+            for (var purchase : c.shopPurchases()) {
+                out.writeUTF(purchase.catalog()); out.writeInt(purchase.row()); out.writeInt(purchase.purchased()); out.writeUTF(purchase.signature());
             }
             out.writeBoolean(saved.visit() != null);
             if (saved.visit() != null) {
@@ -139,6 +164,11 @@ public final class NativeSaveManager {
                 for (int j = 0; j < items; j++) loot.add(new LootTable.LootEntry(in.readInt(), in.readInt(), in.readInt()));
                 if (chests.put(key, new LootTable.LootResult(rewardGold, List.copyOf(loot))) != null) throw new IOException("Duplicate pending chest");
             }
+            var purchases = new ArrayList<NativeShopState.Purchase>();
+            if (version >= 3) {
+                int n = count(in, 10000);
+                for (int i = 0; i < n; i++) purchases.add(new NativeShopState.Purchase(text(in), in.readInt(), in.readInt(), text(in)));
+            }
             LocalMapTraversal.Snapshot visit = null; NativeLocalEncounterFlow.Snapshot pace = null;
             if (in.readBoolean()) {
                 int map = in.readInt(); var pos = position(in); var facing = value(Direction.class, text(in)); var anchor = position(in); long movement = in.readLong();
@@ -154,7 +184,7 @@ public final class NativeSaveManager {
                 pace = new NativeLocalEncounterFlow.Snapshot(paces, last);
             }
             if (in.available() != 0) throw new IOException("Trailing native payload");
-            return new Checkpoint(content, new NativeCampaignV5.Snapshot(members, gold, bank, pendingGold, slots, curriculum, flags, world, chests), visit, pace);
+            return new Checkpoint(content, new NativeCampaignV5.Snapshot(members, gold, bank, pendingGold, slots, curriculum, flags, world, chests, purchases), visit, pace);
         } catch (IllegalArgumentException ex) { throw new IOException("Invalid native save value: " + ex.getMessage(), ex); }
     }
     private static void count(DataOutput out, int n, int max) throws IOException { if (n < 0 || n > max) throw new IOException("Save count outside limit"); out.writeInt(n); }

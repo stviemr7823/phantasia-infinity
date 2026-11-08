@@ -23,9 +23,8 @@ doors and conditional NPCs without touching the legacy comparison session.
 Chest collection remains all-or-nothing, with one cached blocked roll per feature
 in the campaign. Gold limits, completion flags and repeated claims retain their
 existing checks. The merchant buys/sells against native inventory and gold. Sale
-overflow now leaves the item in place for either session type. The existing shop
-limitation remains: finite stock depletion/one-time purchase enforcement is not
-implemented; use the unlimited diagnostic listings for this test route.
+overflow now leaves the item in place for either session type. Native [finite stock and one-time listings](NATIVE_GUILD_STOCK.md) now persist in
+campaign state; the legacy comparison retains its prior shop behavior.
 
 ## Exploration, battle, guild, preparation
 
@@ -52,7 +51,7 @@ screen, with context determining which operations are available.
 
 The standalone B/R shortcuts are disabled in mapped contexts: movement starts
 battles and the map pause menu resets the complete diagnostic session. Native [inn/bank NPCs and authored counters](NATIVE_INN_BANK.md) now operate on
-this campaign directly. Custom guild-counter pricing/caps remain pending.
+this campaign directly. Authored [guild-counter pricing/caps](NATIVE_GUILD_STOCK.md) are now active.
 
 ## Controls
 
@@ -74,7 +73,7 @@ using the new owner. The map pause reset replaces both test sessions and all vis
 
 Native [outside-combat checkpoints](NATIVE_CHECKPOINTS.md) now preserve the campaign
 and current visit when enabled with --native-save PATH. This remains opt-in
-diagnostic wiring: normal-game launcher migration, authored guild-counter settings, final
+diagnostic wiring: normal-game launcher migration, automatic restocking, final
 curriculum and authored encounter tables remain pending. The party interface does
 not change legacy saves or the existing generated-dungeon path.
 
@@ -92,4 +91,4 @@ learned moves in later battles, menu/world return, reset and headless rendering.
 Previous suites, the Java 21 Gradle build and the AWT/Xvfb window lifecycle remain
 in CI. Manual desktop play-through and final phone controls remain pending.
 
-Next: authored guild settings, shop stock and a decision on making this route the default.
+Next: native battle escape and a decision on making this route the default.

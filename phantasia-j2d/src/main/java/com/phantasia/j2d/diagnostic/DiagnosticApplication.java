@@ -83,12 +83,12 @@ public final class DiagnosticApplication {
         try {
             var checkpoint = new NativeSaveManager.Checkpoint(id, nativeCampaign().snapshot(),
                     visit == null ? null : visit.traversal().snapshot(), visit == null ? null : visit.nativeEncounters().snapshot());
-            NativeSaveManager.save(path, checkpoint, id, content.maps(), p -> p.equals(new WorldPosition(0, 0)));
+            NativeSaveManager.save(path, checkpoint, id, content.maps(), content.shops(), p -> p.equals(new WorldPosition(0, 0)));
         } catch (IllegalArgumentException | IllegalStateException ex) { throw new java.io.IOException("Cannot save native checkpoint: " + ex.getMessage(), ex); }
     }
     public void loadNative(java.nio.file.Path path) throws java.io.IOException {
         requireCheckpointScreen();
-        var loaded = NativeSaveManager.load(path, contentId(), content.maps(), p -> p.equals(new WorldPosition(0, 0)));
+        var loaded = NativeSaveManager.load(path, contentId(), content.maps(), content.shops(), p -> p.equals(new WorldPosition(0, 0)));
         install(session, loaded.campaign(), loaded.traversal(), loaded.encounters());
         nativeMapScreen.notice("Native checkpoint loaded.");
     }

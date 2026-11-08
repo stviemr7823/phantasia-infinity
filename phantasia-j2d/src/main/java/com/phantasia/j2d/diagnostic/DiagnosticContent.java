@@ -31,6 +31,7 @@ public final class DiagnosticContent {
         town.addNpc(new PlacedNpc(GUIDE, 8, 8, Direction.NORTH)); town.addNpc(new PlacedNpc(MERCHANT, 6, 6, Direction.WEST)); town.addNpc(new PlacedNpc(TRAINER, 6, 10, Direction.NORTH));
         town.addFeature(new PlacedFeature(15, 9, PlacedFeatureType.INN_COUNTER, new InnData(2, "Test inn: rest here before returning to the dungeon.", false)));
         town.addFeature(new PlacedFeature(17, 9, PlacedFeatureType.BANK_COUNTER, BankData.standard()));
+        town.addFeature(new PlacedFeature(19, 9, PlacedFeatureType.GUILD_COUNTER, new GuildData(5, 2, 2)));
         for (int y = 8; y <= 11; y++) town.setTile(12, y, 2);
         for (int x = 2; x <= 5; x++) town.setTile(x, 11, 15);
         var dungeon = room(DUNGEON, "Test dungeon / room 1", 16, 12, true);
@@ -60,7 +61,8 @@ public final class DiagnosticContent {
         npcs.register(new NpcDefinition(TRAINER, "Test trainer", NpcRole.TRAINER, null));
         npcs.register(speaker(GUARD, "Test guard", "Conditional NPC visible after test gate permission. Return routes remain open."));
         npcs.register(speaker(HALL_NPC, "Test hall NPC", "Castle-room travel and gated NPC visibility are connected. Story details remain undecided."));
-        var shop = new ShopInventory(SHOP, "Test supplies"); shop.addEntry(new ShopEntry(101)); shop.addEntry(new ShopEntry(61)); shops.register(shop);
+        var shop = new ShopInventory(SHOP, "Test supplies"); shop.addEntry(new ShopEntry(101)); shop.addEntry(new ShopEntry(61));
+        shop.addEntry(new ShopEntry(102, 2, 0.1f)); shop.addEntry(new ShopEntry(111, -1, 0.25f, null, true)); shops.register(shop);
         var bundle = new Bundle(maps, npcs, shops); bundle.validate(); return bundle;
     }
     private static NpcDefinition speaker(int id, String name, String text) { var n = new NpcDefinition(id, name, NpcRole.GUARD, null); n.getDialogue().addNode(new DialogueNode(text, null, null, null)); return n; }

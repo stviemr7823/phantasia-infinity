@@ -11,7 +11,10 @@ import java.util.List;
 
 /** Isolated native-v5 vertical slice. Fixture progression values are not game balance. */
 public final class NativeProgressionScreen implements Screen {
-    public record LocalContext(com.phantasia.j2d.screen.LocalMapScreen.Visit visit, boolean guild) {}
+    public record LocalContext(com.phantasia.j2d.screen.LocalMapScreen.Visit visit, boolean guild,
+                               com.phantasia.core.world.ServiceData.GuildData terms, com.phantasia.core.world.PlacedFeature feature) {
+        public LocalContext(com.phantasia.j2d.screen.LocalMapScreen.Visit visit, boolean guild) { this(visit, guild, null, null); }
+    }
     private final ScreenManager manager;
     private NativeCampaignV5 campaign;
     private LocalContext local;
@@ -70,7 +73,10 @@ public final class NativeProgressionScreen implements Screen {
                 }
                 case KeyEvent.VK_G -> {
                     if (local != null && !local.guild()) { message = "Visit a guild trainer to gain a level and learn techniques."; return; }
-                    var result = campaign.train(member);
+                    if (local != null && local.feature() != null && !local.visit().traversal().featureAvailable(local.feature()))
+                        throw new IllegalStateException("This guild counter has already been resolved.");
+                    var result = campaign.train(member, local == null ? null : local.terms());
+                    if (local != null && local.feature() != null) local.visit().traversal().completeInteraction(local.feature());
                     message = member.runtime().name() + " trained to level " + result.level() + "; learned " + result.learned();
                 }
                 default -> {
@@ -153,7 +159,8 @@ public final class NativeProgressionScreen implements Screen {
             } else {
                 var step = campaign.nextTraining(m);
                 g.drawString(step == null ? "   No further test training defined."
-                        : "   Next guild level: XP " + step.experience() + ", gold " + step.cost() + ", learns " + step.learns(), 70, y + 72);
+                        : "   Next guild level: XP " + step.experience() + ", gold " + campaign.trainingCost(m, local == null ? null : local.terms())
+                                + ", learns " + step.learns() + (local != null && local.terms() != null && local.terms().maxLevel() != 0 ? "; guild cap " + local.terms().maxLevel() : ""), 70, y + 72);
             }
             y += 120;
         }

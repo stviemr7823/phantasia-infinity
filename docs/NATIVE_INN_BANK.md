@@ -62,7 +62,7 @@ longer opens. Unflagged bank services allow multiple explicit transfers.
 
 ## Checkpoints
 
-Native checkpoint writer version 2 adds the bank balance alongside purse and
+Native checkpoint version 2 introduced the bank balance alongside purse and
 pending gold. Restored HP/MP and service completion flags use existing campaign
 fields. The version-1 reader remains available and initializes its absent bank
 balance to zero; unknown versions and invalid negative bank balances reject.
@@ -82,14 +82,14 @@ saves. See [NATIVE_CHECKPOINTS.md](NATIVE_CHECKPOINTS.md).
 bash run_native_services.sh
 ```
 
-98 checks cover rest quotes, MP/sleep, optional revival, insufficient funds and
+100 checks cover rest quotes, MP/sleep, optional revival, insufficient funds and
 large-cost rejection; fee rounding, conservation, invalid amounts, purse/bank
 overflow and pending-award retry; real NPC/counter overlays, one-shot completion,
-same-tile return, checkpoint version 2 and version-1 reading, and a fresh JVM
+same-tile return, current checkpoints and version-1/2 reading, and a fresh JVM
 reload of bank/rest state. Service screens are also rendered headlessly. Prior
 suites, Java 21 Gradle tests/compilation and the real Xvfb window lifecycle remain
 in CI; manual desktop play-through remains pending.
 
-Remaining service work: authored guild-counter price/cap settings, finite shop
-stock and one-time purchases. Final balance and the normal-launcher native
-migration remain separate decisions.
+Authored [guild-counter terms, finite stock and one-time purchases](NATIVE_GUILD_STOCK.md)
+are now implemented. Automatic restocking, final balance and the normal-launcher
+native migration remain separate work.
