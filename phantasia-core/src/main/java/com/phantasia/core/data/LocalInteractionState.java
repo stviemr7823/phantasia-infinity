@@ -12,4 +12,9 @@ public final class LocalInteractionState {
     public LootTable.LootResult pending(Key key) { return pending.get(key); }
     public void remember(Key key, LootTable.LootResult loot) { pending.put(key, loot); }
     public void forget(Key key) { pending.remove(key); }
+    public Map<Key, LootTable.LootResult> snapshot() {
+        var copy = new HashMap<Key, LootTable.LootResult>();
+        pending.forEach((k, v) -> copy.put(k, new LootTable.LootResult(v.gold(), java.util.List.copyOf(v.items()))));
+        return Map.copyOf(copy);
+    }
 }

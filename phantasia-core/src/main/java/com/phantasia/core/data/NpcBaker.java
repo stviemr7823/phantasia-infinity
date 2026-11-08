@@ -139,7 +139,7 @@ public final class NpcBaker {
     private static void writeFlagSet(DataOutputStream out, Set<QuestFlag> flags)
             throws IOException {
         out.writeByte(flags.size());
-        for (QuestFlag f : flags) {
+        for (QuestFlag f : flags.stream().sorted(java.util.Comparator.comparingInt(flag -> flag.bit)).toList()) {
             out.writeByte(f.bit);
         }
     }

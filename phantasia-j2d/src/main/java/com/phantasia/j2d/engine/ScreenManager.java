@@ -181,6 +181,7 @@ public class ScreenManager {
     public Screen      getActiveScreen() { return activeScreen; }
     public GameState   getActiveState()  { return activeState;  }
     public boolean     isFading()        { return fading;       }
+    public GameState underlyingState() { return stack.isEmpty() ? activeState : stack.peek(); }
 
     // -------------------------------------------------------------------------
     // Internal

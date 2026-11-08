@@ -73,12 +73,11 @@ area changes and return to the entry menu during the current test session. Nativ
 R from the standalone screen resets that native test party; N then creates a visit
 using the new owner. The map pause reset replaces both test sessions and all visits.
 
-This remains opt-in diagnostic wiring. There is no native campaign save/load,
-resume-inside snapshot, normal-game launcher migration, native inn/bank service,
-final curriculum or authored encounter table in this increment. The new party
-interface does not change legacy saves or the existing generated-dungeon path.
-Pending rewards and learned/readied sets must be included in a future campaign
-snapshot before claiming restart continuity.
+Native [outside-combat checkpoints](NATIVE_CHECKPOINTS.md) now preserve the campaign
+and current visit when enabled with --native-save PATH. This remains opt-in
+diagnostic wiring: normal-game launcher migration, native inn/bank services, final
+curriculum and authored encounter tables remain pending. The party interface does
+not change legacy saves or the existing generated-dungeon path.
 
 ## Verification
 
@@ -94,5 +93,4 @@ learned moves in later battles, menu/world return, reset and headless rendering.
 Previous suites, the Java 21 Gradle build and the AWT/Xvfb window lifecycle remain
 in CI. Manual desktop play-through and final phone controls remain pending.
 
-Next: persist the full native campaign and visit state, then complete native
-services and decide when to make this route the default.
+Next: complete native services and decide when to make this route the default.

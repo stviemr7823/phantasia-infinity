@@ -21,6 +21,27 @@ public final class NativeLocalEncounterFlow {
     }
     public NativeCampaignV5 campaign() { return campaign; }
     public NativeCampaignV5.Battle active() { return active; }
+    public record Snapshot(Map<Integer, Integer> paces, long lastMovement) {
+        public Snapshot { paces = Map.copyOf(paces); }
+    }
+    public Snapshot snapshot() {
+        if (active != null || campaign.activeBattle() != null) throw new IllegalStateException("Acknowledge combat before saving");
+        return new Snapshot(paces, lastMovement);
+    }
+    public static NativeLocalEncounterFlow restore(LocalMapTraversal traversal, NativeCampaignV5 campaign,
+            Supplier<List<Monster>> enemies, ToIntFunction<Monster> agility, Snapshot saved,
+            com.phantasia.core.data.InteriorMapRegistry registry) {
+        if (saved.lastMovement() < 0 || saved.lastMovement() > traversal.movementCount() || saved.paces().size() > 10000)
+            throw new IllegalArgumentException("Invalid encounter checkpoint");
+        var flow = new NativeLocalEncounterFlow(traversal, campaign, enemies, agility);
+        saved.paces().forEach((id, count) -> {
+            var map = registry.get(id);
+            if (map == null || count < 0 || count >= Math.max(1, map.getSettings().getEncounterInterval()))
+                throw new IllegalArgumentException("Invalid encounter pace count");
+            flow.paces.put(id, count);
+        });
+        flow.lastMovement = saved.lastMovement(); return flow;
+    }
     public NativeCampaignV5.Battle afterStep(LocalMapTraversal.Result step) {
         if (active != null || campaign.activeBattle() != null || traversal.hasExited()
                 || LocalFeatureEffects.partyDefeated(campaign) || step.kind() != LocalMapTraversal.Kind.MOVED

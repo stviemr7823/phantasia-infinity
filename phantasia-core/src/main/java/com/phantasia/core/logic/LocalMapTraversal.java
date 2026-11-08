@@ -44,6 +44,47 @@ public final class LocalMapTraversal {
     }
     public InteriorMap map() { return map; }
     public LocalSession session() { return session; }
+    public record Snapshot(int mapId, WorldPosition position, Direction facing, WorldPosition worldReturn,
+                           long movementCount, Map<Integer, List<Long>> explored) {
+        public Snapshot {
+            Objects.requireNonNull(position); Objects.requireNonNull(facing); Objects.requireNonNull(worldReturn);
+            var copy = new HashMap<Integer, List<Long>>(); explored.forEach((id, bits) -> copy.put(id, List.copyOf(bits)));
+            explored = Map.copyOf(copy);
+        }
+    }
+    public Snapshot snapshot() {
+        if (exited || encounterSuspended) throw new IllegalStateException("Visit is not at a save checkpoint");
+        var bits = new HashMap<Integer, List<Long>>();
+        explored.forEach((id, value) -> bits.put(id, Arrays.stream(value.toLongArray()).boxed().toList()));
+        return new Snapshot(map.getId(), position, facing, worldReturn, movementCount, bits);
+    }
+    public static LocalMapTraversal restore(InteriorMapRegistry registry, LocalSession session, Snapshot saved,
+                                            java.util.function.Predicate<WorldPosition> allowedWorld) {
+        if (!allowedWorld.test(saved.worldReturn()) || !saved.worldReturn().equals(session.getWorldPosition())
+                || saved.movementCount() < 0 || saved.movementCount() == Long.MAX_VALUE || saved.explored().size() > 10000)
+            throw new IllegalArgumentException("Invalid saved visit anchor or counters");
+        var visit = new LocalMapTraversal(registry, session, saved.mapId(), null, allowedWorld);
+        var p = saved.position();
+        if (!visit.map.inBounds(p.x(), p.y()) || visit.visibleNpcAt(p.x(), p.y()) != null)
+            throw new IllegalArgumentException("Saved position is outside the map or occupied");
+        var tile = visit.tiles.getEntry(visit.map.getTile(p.x(), p.y()));
+        var feature = visit.map.getFeatureAt(p.x(), p.y());
+        boolean openDoor = feature != null && feature.featureType() == PlacedFeatureType.LOCKED_DOOR
+                && feature.consumedFlag() != null && session.hasFlag(feature.consumedFlag());
+        if (tile == null || !tile.passable() && !openDoor) throw new IllegalArgumentException("Saved position is blocked");
+        visit.explored.clear();
+        saved.explored().forEach((id, words) -> {
+            var known = registry.get(id);
+            if (known == null || words.size() > ((long) known.getWidth() * known.getHeight() + 63) / 64)
+                throw new IllegalArgumentException("Invalid explored map or bit count");
+            var bits = BitSet.valueOf(words.stream().mapToLong(Long::longValue).toArray());
+            if (bits.length() > (long) known.getWidth() * known.getHeight()) throw new IllegalArgumentException("Explored bits outside map");
+            visit.explored.put(id, bits);
+        });
+        visit.position = p; visit.facing = saved.facing(); visit.movementCount = saved.movementCount();
+        if (!visit.isExplored(p.x(), p.y())) throw new IllegalArgumentException("Saved location has no exploration record");
+        return visit;
+    }
     public WorldPosition position() { return position; }
     public Direction facing() { return facing; }
     public boolean hasExited() { return exited; }

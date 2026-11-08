@@ -26,9 +26,9 @@ public final class NativeCampaignV5 implements LocalSession {
         private final PlayerRuntimeV5 runtime;
         private final Set<Action> learned = EnumSet.noneOf(Action.class);
         private List<Action> readied = List.of();
-        private Member(PlayerStateV5 input) {
+        private Member(PlayerStateV5 input, boolean fresh) {
             state = PlayerStateV5.fromBytes(input.toBytes()); runtime = new PlayerRuntimeV5(state);
-            if (state.level() != 1) throw new IllegalArgumentException("Fresh campaigns require level-one players");
+            if (state.level() < 1 || fresh && state.level() != 1) throw new IllegalArgumentException("Invalid starting level");
             if (Arrays.stream(Job.values()).noneMatch(j -> j.getBitValue() == state.jobId()))
                 throw new IllegalArgumentException("Unknown job ID");
             if (state.maxHp() == 0 || state.hp() > state.maxHp() || state.mp() > state.maxMp())
@@ -82,6 +82,9 @@ public final class NativeCampaignV5 implements LocalSession {
     public LocalInteractionState getLocalInteractions() { return localInteractions; }
 
     public NativeCampaignV5(List<PlayerStateV5> players, int gold, int readySlots, List<TrainingStep> curriculum) {
+        this(players, gold, readySlots, curriculum, true);
+    }
+    private NativeCampaignV5(List<PlayerStateV5> players, int gold, int readySlots, List<TrainingStep> curriculum, boolean fresh) {
         if (players.isEmpty() || players.size() > 6 || gold < 0 || readySlots < 1 || readySlots > TECHNIQUES.size())
             throw new IllegalArgumentException("Invalid campaign configuration");
         Set<PlayerStateV5> seen = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -102,7 +105,74 @@ public final class NativeCampaignV5 implements LocalSession {
                 previousLevel = step.level(); previousXp = step.experience();
             }
         }
-        party = players.stream().map(Member::new).toList(); this.gold = gold; this.readySlots = readySlots;
+        party = players.stream().map(p -> new Member(p, fresh)).toList(); this.gold = gold; this.readySlots = readySlots;
+    }
+    public record MemberSnapshot(byte[] record, List<Action> learned, List<Action> readied) {
+        public MemberSnapshot { record = record.clone(); learned = List.copyOf(learned); readied = List.copyOf(readied); }
+        @Override public byte[] record() { return record.clone(); }
+    }
+    public record Snapshot(List<MemberSnapshot> members, int gold, long pendingGold, int readySlots,
+                           List<TrainingStep> curriculum, long questFlags, WorldPosition worldPosition,
+                           Map<LocalInteractionState.Key, LootTable.LootResult> pendingChests) {
+        public Snapshot {
+            members = List.copyOf(members); curriculum = List.copyOf(curriculum); Objects.requireNonNull(worldPosition);
+            var copy = new HashMap<LocalInteractionState.Key, LootTable.LootResult>();
+            pendingChests.forEach((k, v) -> copy.put(k, new LootTable.LootResult(v.gold(), List.copyOf(v.items()))));
+            pendingChests = Map.copyOf(copy);
+        }
+    }
+    /** Battle results must be acknowledged too: receipts cannot be lost across a checkpoint. */
+    public Snapshot snapshot() {
+        outsideBattle();
+        return new Snapshot(party.stream().map(m -> new MemberSnapshot(m.state.toBytes(),
+                m.learned.stream().sorted(Comparator.comparing(Enum::name)).toList(), m.readied)).toList(),
+                (int) gold, pendingGold, readySlots, curriculum, questFlags, worldPosition, localInteractions.snapshot());
+    }
+    /** Build and validate a detached owner; never patch the running campaign during import. */
+    public static NativeCampaignV5 restore(Snapshot data) {
+        if (data.pendingGold() < 0 || data.pendingGold() > Long.MAX_VALUE - Integer.MAX_VALUE
+                || data.pendingChests().size() > 10000) throw new IllegalArgumentException("Invalid pending rewards");
+        var states = data.members().stream().map(m -> PlayerStateV5.fromBytes(m.record())).toList();
+        var restored = new NativeCampaignV5(states, data.gold(), data.readySlots(), data.curriculum(), false);
+        for (int i = 0; i < states.size(); i++) {
+            var state = states.get(i); var member = restored.party.get(i); var saved = data.members().get(i);
+            if ((state.statusFlags() & ~PlayerRuntimeV5.STATUS_ASLEEP) != 0) throw new IllegalArgumentException("Unknown player status");
+            var expected = EnumSet.noneOf(Action.class);
+            for (int level = 2; level <= state.level(); level++) {
+                final int at = level;
+                var step = data.curriculum().stream().filter(s -> s.job().getBitValue() == state.jobId() && s.level() == at)
+                        .findFirst().orElseThrow(() -> new IllegalArgumentException("Missing trained level"));
+                if (state.experience() < step.experience()) throw new IllegalArgumentException("XP below trained level");
+                expected.addAll(step.learns());
+            }
+            if (new HashSet<>(saved.learned()).size() != saved.learned().size()
+                    || !expected.equals(new HashSet<>(saved.learned()))) throw new IllegalArgumentException("Invalid learned techniques");
+            for (int slot = 0; slot < member.inventorySlots(); slot++) validateItem(state.inventory(slot));
+            for (var slot : com.phantasia.core.model.item.EquipSlot.values()) {
+                int id = state.equipment(slot); validateItem(id);
+                if (id != 0) {
+                    var item = com.phantasia.core.model.item.ItemTable.get(id);
+                    if (!slot.accepts(item.category()) || item.levelRequirement() > state.level()
+                            || item.jobRestriction() != 0 || item.raceRestriction() != 0)
+                        throw new IllegalArgumentException("Invalid native equipment");
+                }
+            }
+            member.learned.addAll(expected); restored.ready(member, saved.readied());
+        }
+        restored.pendingGold = data.pendingGold(); restored.questFlags = data.questFlags(); restored.worldPosition = data.worldPosition();
+        data.pendingChests().forEach((key, loot) -> {
+            if (key.mapId() < 0 || key.x() < 0 || key.y() < 0 || loot.gold() < 0 || loot.items().size() > 10000)
+                throw new IllegalArgumentException("Invalid pending chest");
+            for (var item : loot.items()) {
+                validateItem(item.itemId());
+                if (item.itemId() == 0 || item.quantity() <= 0 || item.weight() < 0) throw new IllegalArgumentException("Invalid pending item");
+            }
+            restored.localInteractions.remember(key, loot);
+        });
+        return restored;
+    }
+    private static void validateItem(int id) {
+        if (id != 0 && !com.phantasia.core.model.item.ItemTable.exists(id)) throw new IllegalArgumentException("Unknown native item: " + id);
     }
     public List<Member> party() { return party; }
     public long gold() { return gold; }

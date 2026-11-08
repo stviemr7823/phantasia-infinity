@@ -21,6 +21,10 @@ public final class DiagnosticApplication {
     private LocalMapTraversal traversal;
     private LocalMapTraversal nativeTraversal;
     private NativeProgressionScreen nativeScreen;
+    private LocalMapScreen nativeMapScreen;
+    private java.nio.file.Path nativeSavePath;
+    private String saveMessage = "";
+    public void setNativeSavePath(java.nio.file.Path path) { nativeSavePath = path; }
     public com.phantasia.core.logic.NativeCampaignV5 nativeCampaign() { return nativeScreen.campaign(); }
     public LocalMapTraversal nativeTraversal() { return nativeTraversal; }
     public DiagnosticApplication(DiagnosticContent.Bundle content, Runnable quit) { this(content, DiagnosticContent.SETTLEMENT, true, quit); }
@@ -31,21 +35,61 @@ public final class DiagnosticApplication {
     public GameSession session() { return session; }
     public LocalMapTraversal traversal() { return traversal; }
     public void reset() {
-        session = new GameSession(List.of(PlayerCharacter.fromLegacyCreation("Test adventurer", Job.WIZARD, 100, 50, 20, 20, 20, 20, 1)), PartyLedger.newGame(), new WorldPosition(0, 0), 0);
-        traversal = null; manager = new ScreenManager();
-        nativeTraversal = null; nativeScreen = new NativeProgressionScreen(manager);
-        manager.register(GameState.NATIVE_DIAGNOSTIC, nativeScreen);
-        manager.register(GameState.LOCAL_MAP, new LocalMapScreen(manager, session, content.npcs(), content.shops(),
+        var legacy = new GameSession(List.of(PlayerCharacter.fromLegacyCreation("Test adventurer", Job.WIZARD, 100, 50, 20, 20, 20, 20, 1)), PartyLedger.newGame(), new WorldPosition(0, 0), 0);
+        install(legacy, NativeProgressionScreen.freshCampaign(), null, null); saveMessage = "";
+    }
+    private LocalMapScreen nativeMap(ScreenManager target, com.phantasia.core.logic.NativeCampaignV5 campaign) {
+        return new LocalMapScreen(target, campaign, content.npcs(), content.shops(),
+                () -> List.of(EncounterFactory.buildMonster("Native foe", 12, 1, 40)));
+    }
+    private void install(GameSession legacy, com.phantasia.core.logic.NativeCampaignV5 campaign,
+                         LocalMapTraversal restoredVisit, com.phantasia.core.logic.NativeLocalEncounterFlow.Snapshot pace) {
+        var next = new ScreenManager(); var partyScreen = new NativeProgressionScreen(next, campaign);
+        var mapScreen = nativeMap(next, campaign);
+        next.register(GameState.NATIVE_DIAGNOSTIC, partyScreen); next.register(GameState.NATIVE_LOCAL_MAP, mapScreen);
+        next.register(GameState.LOCAL_MAP, new LocalMapScreen(next, legacy, content.npcs(), content.shops(),
                 () -> List.of(EncounterFactory.buildMonster("Test creature", 12, 1, 25))));
         var spells = new SpellFactory();
-        manager.register(GameState.ENCOUNTER_SPLASH, new EncounterSplashScreen(manager));
-        manager.register(GameState.COMBAT_PLANNING, new CombatPlanningScreen(manager, spells));
-        manager.register(GameState.COMBAT_EXECUTION, new CombatExecutionScreen(manager));
-        manager.register(GameState.VICTORY, new VictoryScreen(manager));
-        manager.register(GameState.DEFEAT, new DefeatScreen(manager, quit));
-        manager.register(GameState.DIALOGUE, new DialogueScreen(manager)); manager.register(GameState.SHOP, new ShopOverlay(manager));
-        manager.register(GameState.INN, new InnOverlay(manager)); manager.register(GameState.GUILD, new GuildOverlay(manager)); manager.register(GameState.BANK, new BankOverlay(manager));
-        manager.register(GameState.WORLD_ROAM, new Menu(false)); manager.register(GameState.PAUSE, new Menu(true)); manager.switchTo(GameState.WORLD_ROAM, null);
+        next.register(GameState.ENCOUNTER_SPLASH, new EncounterSplashScreen(next));
+        next.register(GameState.COMBAT_PLANNING, new CombatPlanningScreen(next, spells));
+        next.register(GameState.COMBAT_EXECUTION, new CombatExecutionScreen(next));
+        next.register(GameState.VICTORY, new VictoryScreen(next)); next.register(GameState.DEFEAT, new DefeatScreen(next, quit));
+        next.register(GameState.DIALOGUE, new DialogueScreen(next)); next.register(GameState.SHOP, new ShopOverlay(next));
+        next.register(GameState.INN, new InnOverlay(next)); next.register(GameState.GUILD, new GuildOverlay(next)); next.register(GameState.BANK, new BankOverlay(next));
+        next.register(GameState.WORLD_ROAM, new Menu(false)); next.register(GameState.PAUSE, new Menu(true));
+        if (restoredVisit == null) next.switchTo(GameState.WORLD_ROAM, null);
+        else {
+            var flow = com.phantasia.core.logic.NativeLocalEncounterFlow.restore(restoredVisit, campaign,
+                    () -> List.of(EncounterFactory.buildMonster("Native foe", 12, 1, 40)), ignored -> 10, pace, content.maps());
+            next.switchTo(GameState.NATIVE_LOCAL_MAP, new LocalMapScreen.Visit(restoredVisit, GameState.WORLD_ROAM, null, flow));
+        }
+        // Every import, content check and candidate screen entry succeeded before this swap.
+        session = legacy; manager = next; nativeScreen = partyScreen; nativeMapScreen = mapScreen;
+        traversal = null; nativeTraversal = restoredVisit;
+    }
+    private void requireCheckpointScreen() throws java.io.IOException {
+        var state = manager.getActiveState();
+        if (manager.isFading() || nativeCampaign().activeBattle() != null || !(state == GameState.WORLD_ROAM
+                || state == GameState.NATIVE_LOCAL_MAP || state == GameState.PAUSE && manager.underlyingState() == GameState.NATIVE_LOCAL_MAP))
+            throw new java.io.IOException("Save/load requires the entry menu or an outside-combat native area.");
+    }
+    private String contentId() throws java.io.IOException {
+        content.validate(); return AuthoredContentFingerprint.compute(content.maps(), content.npcs(), content.shops());
+    }
+    public void saveNative(java.nio.file.Path path) throws java.io.IOException {
+        requireCheckpointScreen(); String id = contentId();
+        var visit = manager.getActiveState() == GameState.WORLD_ROAM ? null : nativeMapScreen.visit();
+        try {
+            var checkpoint = new NativeSaveManager.Checkpoint(id, nativeCampaign().snapshot(),
+                    visit == null ? null : visit.traversal().snapshot(), visit == null ? null : visit.nativeEncounters().snapshot());
+            NativeSaveManager.save(path, checkpoint, id, content.maps(), p -> p.equals(new WorldPosition(0, 0)));
+        } catch (IllegalArgumentException | IllegalStateException ex) { throw new java.io.IOException("Cannot save native checkpoint: " + ex.getMessage(), ex); }
+    }
+    public void loadNative(java.nio.file.Path path) throws java.io.IOException {
+        requireCheckpointScreen();
+        var loaded = NativeSaveManager.load(path, contentId(), content.maps(), p -> p.equals(new WorldPosition(0, 0)));
+        install(session, loaded.campaign(), loaded.traversal(), loaded.encounters());
+        nativeMapScreen.notice("Native checkpoint loaded.");
     }
     public void enter(int mapId) {
         traversal = new LocalMapTraversal(content.maps(), session, mapId, null, p -> p.equals(new WorldPosition(0, 0)));
@@ -54,8 +98,8 @@ public final class DiagnosticApplication {
     public void enterNative(int mapId) {
         if (nativeCampaign().activeBattle() != null) throw new IllegalStateException("Native battle is still active");
         nativeTraversal = new LocalMapTraversal(content.maps(), nativeCampaign(), mapId, null, p -> p.equals(new WorldPosition(0, 0)));
-        manager.register(GameState.NATIVE_LOCAL_MAP, new LocalMapScreen(manager, nativeCampaign(), content.npcs(), content.shops(),
-                () -> List.of(EncounterFactory.buildMonster("Native foe", 12, 1, 40))));
+        nativeMapScreen = nativeMap(manager, nativeCampaign());
+        manager.register(GameState.NATIVE_LOCAL_MAP, nativeMapScreen);
         manager.switchTo(GameState.NATIVE_LOCAL_MAP, new LocalMapScreen.Visit(nativeTraversal, GameState.WORLD_ROAM));
     }
     private final class Menu implements Screen {
@@ -69,6 +113,13 @@ public final class DiagnosticApplication {
                 case KeyEvent.VK_R -> reset();
                 case KeyEvent.VK_V -> { if (!pause) manager.switchTo(GameState.NATIVE_DIAGNOSTIC, null); }
                 case KeyEvent.VK_N -> { if (!pause) enterNative(entryMap); }
+                case KeyEvent.VK_F5, KeyEvent.VK_F9 -> {
+                    if (nativeSavePath == null) { saveMessage = "Enable checkpoints with --native-save PATH."; break; }
+                    try {
+                        if (e.getKeyCode() == KeyEvent.VK_F5) { saveNative(nativeSavePath); saveMessage = "Native checkpoint saved."; }
+                        else { loadNative(nativeSavePath); saveMessage = "Native checkpoint loaded."; }
+                    } catch (java.io.IOException ex) { saveMessage = ex.getMessage(); }
+                }
                 case KeyEvent.VK_Q -> quit.run();
             }
         }
@@ -89,6 +140,9 @@ public final class DiagnosticApplication {
                 g.drawString("N: authored areas with the native party", 155, 285 + lines.length * 65);
                 g.drawString("V: native party preparation and standalone battle test", 155, 330 + lines.length * 65);
             }
+            g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 23));
+            g.drawString(nativeSavePath == null ? "Checkpoints disabled (optional --native-save PATH)." : "F5: native checkpoint   F9: load (entry menu or native map pause)", 155, h - 80);
+            g.drawString(saveMessage, 155, h - 42);
         }
     }
 }

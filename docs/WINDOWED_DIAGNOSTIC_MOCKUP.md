@@ -101,7 +101,8 @@ this creates the actual window, renders thirty frames and closes automatically.
 That is a window lifecycle check, not a human play-through. Target-machine sizing,
 input feel and manual gameplay review remain pending.
 
-Next: persistent native campaign snapshots and native inn/bank services.
+Optional native checkpoint save/load is enabled with --native-save PATH; see
+[NATIVE_CHECKPOINTS.md](NATIVE_CHECKPOINTS.md). Next: native inn/bank services.
 
 Encounter pacing, reward receipts and return paths are detailed in
 [LOCAL_ENCOUNTERS.md](LOCAL_ENCOUNTERS.md).

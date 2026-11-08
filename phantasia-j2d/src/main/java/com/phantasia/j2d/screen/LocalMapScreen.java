@@ -32,6 +32,8 @@ public final class LocalMapScreen implements Screen {
     private final java.util.function.Supplier<List<Monster>> encounterFactory;
     private final Set<Integer> held = new HashSet<>();
     private Visit visit;
+    public Visit visit() { return visit; }
+    public void notice(String text) { message = text; }
     private float cooldown;
     private String message = "";
     private static final int CELL = 48;

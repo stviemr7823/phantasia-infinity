@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.*;
 public final class DiagnosticMain {
     private DiagnosticMain() {}
     public static void main(String[] args) throws Exception {
-        boolean check = false, smoke = false; Path render = null, source = null, export = null; Integer entry = null;
+        boolean check = false, smoke = false; Path render = null, source = null, export = null, nativeSave = null; Integer entry = null;
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
                 case "--check" -> check = true;
@@ -23,12 +23,14 @@ public final class DiagnosticMain {
                 case "--render-dir" -> { if (++i == args.length) throw new IllegalArgumentException("--render-dir needs a new directory"); render = Path.of(args[i]); }
                 case "--content-dir" -> { if (++i == args.length) throw new IllegalArgumentException("--content-dir needs a directory"); source = Path.of(args[i]); }
                 case "--export-dir" -> { if (++i == args.length) throw new IllegalArgumentException("--export-dir needs a new directory"); export = Path.of(args[i]); }
+                case "--native-save" -> { if (++i == args.length) throw new IllegalArgumentException("--native-save needs a path"); nativeSave = Path.of(args[i]); }
                 case "--map" -> { if (++i == args.length) throw new IllegalArgumentException("--map needs an ID"); entry = Integer.valueOf(args[i]); }
                 default -> throw new IllegalArgumentException("Unknown option: " + args[i]);
             }
         }
         if (source != null && (export != null || entry == null)) throw new IllegalArgumentException("--content-dir requires --map and cannot be combined with --export-dir");
         if (smoke && (check || render != null)) throw new IllegalArgumentException("--window-smoke cannot be combined with headless modes");
+        if (nativeSave != null && (check || render != null || export != null)) throw new IllegalArgumentException("--native-save is a window option");
         Path temporary = source == null && export == null ? Files.createTempDirectory("phantasia_mockup_") : null;
         try {
             DiagnosticContent.Bundle content = source != null ? DiagnosticContent.load(source)
@@ -43,7 +45,7 @@ public final class DiagnosticMain {
                 System.out.println("DIAGNOSTIC_CHECK maps=" + content.maps().size() + " npcs=" + content.npcs().size() + " shops=" + content.shops().size() + " PASS"); return;
             }
             if (GraphicsEnvironment.isHeadless()) throw new IllegalStateException("No graphical display. Use --check or --render-dir, or run from a desktop session.");
-            window(content, mapId, source == null, smoke);
+            window(content, mapId, source == null, smoke, nativeSave);
         } finally {
             if (temporary != null) try (var files = Files.walk(temporary)) { for (var file : files.sorted(Comparator.reverseOrder()).toList()) Files.delete(file); }
         }
@@ -61,11 +63,11 @@ public final class DiagnosticMain {
         } finally { g.dispose(); }
         if (!ImageIO.write(image, "png", path.toFile())) throw new IllegalStateException("PNG encoder unavailable");
     }
-    private static void window(DiagnosticContent.Bundle content, int mapId, boolean fixture, boolean smoke) throws Exception {
+    private static void window(DiagnosticContent.Bundle content, int mapId, boolean fixture, boolean smoke, Path nativeSave) throws Exception {
         var closed = new CountDownLatch(1); var failure = new AtomicReference<Throwable>();
         var active = new AtomicReference<WindowHost>();
         EventQueue.invokeAndWait(() -> {
-            var host = new WindowHost(content, mapId, fixture, smoke, closed, failure);
+            var host = new WindowHost(content, mapId, fixture, smoke, closed, failure, nativeSave);
             active.set(host);
             try { host.open(); }
             catch (Throwable error) { failure.set(error); host.close(); }
@@ -90,9 +92,9 @@ public final class DiagnosticMain {
         private Timer timer;
         private int frames;
         private boolean closing;
-        WindowHost(DiagnosticContent.Bundle content, int mapId, boolean fixture, boolean smoke, CountDownLatch closed, AtomicReference<Throwable> failure) {
+        WindowHost(DiagnosticContent.Bundle content, int mapId, boolean fixture, boolean smoke, CountDownLatch closed, AtomicReference<Throwable> failure, Path nativeSave) {
             this.smoke = smoke; this.mapId = mapId; this.closed = closed; this.failure = failure;
-            app = new DiagnosticApplication(content, mapId, fixture, this::close);
+            app = new DiagnosticApplication(content, mapId, fixture, this::close); app.setNativeSavePath(nativeSave);
         }
         void open() {
             canvas.enterWindowed("Phantasia Infinity — diagnostic mockup", 1280, 720, this::close);

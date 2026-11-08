@@ -84,14 +84,13 @@ limit. Final costs, growth tables and unlock curricula remain editable decisions
 
 Native campaigns currently start from fresh level-one records. Learned/readied
 sets and pending gold are runtime campaign state, not hidden in the 64-byte
-record's reserved space. There is no campaign snapshot/load format yet. The
-diagnostic does not touch normal saves.
+record's reserved space. Optional [native checkpoints](NATIVE_CHECKPOINTS.md) now
+preserve this state and an outside-combat visit. Normal legacy saves are separate.
 
 The shared LocalSession interface now connects authored maps, treasure/traps,
 dialogue and merchants to this native owner; mapped trainers use native training.
-Next persist the complete campaign (including learned/readied state and pending
-rewards) before claiming restart continuity. Existing generated dungeons retain
-their previous path.
+Native checkpoints now include learned/readied state and pending rewards. Existing
+generated dungeons retain their previous path; mid-battle saving remains excluded.
 
 ## Verification
 

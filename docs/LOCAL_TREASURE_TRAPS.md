@@ -29,11 +29,12 @@ the chest again. Completed gold/items/flags survive the existing save format.
 Notification callbacks may still propagate their own exceptions after the model
 commit; the underlying event bus is unchanged.
 
-Pending, uncollected rolls are runtime-only and are not yet serialized by the
+For the legacy comparison route, pending, uncollected rolls remain runtime-only and are not serialized by the
 legacy save format. Their retry stability therefore covers the current session,
 not quitting and reloading an uncollected chest. Campaign snapshots must preserve
 this cache before claiming stable pending rewards across restarts. The diagnostic
-launcher itself still never loads or writes normal saves.
+launcher never loads or writes normal legacy saves. The N route can now preserve
+pending rolls and native campaign state with [native checkpoints](NATIVE_CHECKPOINTS.md).
 
 LootTable gains a RandomGenerator overload for deterministic tests and validates
 its payload before rolling. Inclusive gold ranges use long bounds to avoid

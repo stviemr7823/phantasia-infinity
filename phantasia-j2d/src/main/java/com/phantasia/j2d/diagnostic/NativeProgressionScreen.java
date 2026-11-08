@@ -21,14 +21,17 @@ public final class NativeProgressionScreen implements Screen {
     private final Set<Integer> pressed = new HashSet<>();
     private static final List<Action> TECHNIQUES = List.of(Action.THRUST, Action.SLASH, Action.LUNGE, Action.AIM_BLOW);
     public NativeProgressionScreen(ScreenManager manager) { this.manager = manager; reset(); }
+    public NativeProgressionScreen(ScreenManager manager, NativeCampaignV5 campaign) { this.manager = manager; this.campaign = java.util.Objects.requireNonNull(campaign); }
     public NativeCampaignV5 campaign() { return campaign; }
     public void reset() {
+        campaign = freshCampaign(); selected = 0; targetIndex = 0; log = List.of();
+    }
+    public static NativeCampaignV5 freshCampaign() {
         var first = PlayerCreationV5.create("Native test A", 1, Job.FIGHTER, 0, 20, 20, 15, 100, 10);
         var second = PlayerCreationV5.create("Native test B", 2, Job.FIGHTER, 0, 18, 18, 15, 100, 10);
-        campaign = new NativeCampaignV5(List.of(first, second), 40, 2, List.of(
+        return new NativeCampaignV5(List.of(first, second), 40, 2, List.of(
                 new NativeCampaignV5.TrainingStep(Job.FIGHTER, 2, 20, 10, 4, 1, List.of(Action.THRUST)),
                 new NativeCampaignV5.TrainingStep(Job.FIGHTER, 3, 40, 20, 4, 1, List.of(Action.SLASH))));
-        selected = 0; targetIndex = 0; log = List.of();
     }
     @Override public void onEnter(Object data) {
         pressed.clear(); local = data instanceof LocalContext context ? context : null;
@@ -132,7 +135,7 @@ public final class NativeProgressionScreen implements Screen {
         g.setColor(new Color(240, 210, 125)); g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 34));
         g.drawString("Native-v5 / battle, guild and readied techniques", 70, 75);
         g.setColor(Color.WHITE); g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 23));
-        g.drawString(local == null ? "Non-canon test rules. N at the menu explores with this native party; no saves."
+        g.drawString(local == null ? "Non-canon test rules. N explores with this native party; checkpoints through menu/pause."
                 : "Same native party as exploration. " + (local.guild() ? "Guild training." : "Field preparation / battle."), 70, 117);
         g.drawString("Gold " + campaign.gold() + "   Pending " + campaign.pendingGold() + (local == null ? "   R: reset native test" : "   Reset through the map pause menu."), 70, 156);
         var battle = campaign.activeBattle();
