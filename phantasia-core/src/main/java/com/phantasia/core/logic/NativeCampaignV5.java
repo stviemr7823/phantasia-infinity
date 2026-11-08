@@ -346,9 +346,35 @@ public final class NativeCampaignV5 implements LocalSession {
         public List<CombatOrderPlannerV5.OrderRow> rows() { return planner.orderRows(); }
         public boolean canConfirm() { return !acknowledged && planner.canConfirm(); }
         private void requireActive() { if (active != this || acknowledged) throw new IllegalStateException("Battle is no longer active"); }
+        public List<Integer> potionSlots(Member member) {
+            requireActive(); requireMember(member);
+            return java.util.stream.IntStream.range(0, member.inventorySlots()).filter(slot -> {
+                int id = member.getInventoryItemId(slot);
+                return com.phantasia.core.model.item.ItemTable.exists(id) && com.phantasia.core.model.item.ItemTable.get(id).isConsumable();
+            }).boxed().toList();
+        }
+        public List<Member> potionTargets(Member member, int slot) {
+            requireActive(); requireMember(member);
+            int id = member.runtime.inventoryItemId(slot);
+            if (!com.phantasia.core.model.item.ItemTable.exists(id) || !com.phantasia.core.model.item.ItemTable.get(id).isConsumable())
+                throw new IllegalArgumentException("Select a carried potion");
+            return party.stream().filter(m -> CombatRoundV5.potionHelps(id, m.runtime)).toList();
+        }
+        /** Null ally chooses the first living party member who benefits, in party order. */
+        public void selectPotion(Member member, int slot, Member target) {
+            requireActive(); requireMember(member);
+            if (!member.isAlive()) throw new IllegalArgumentException("Inactive potion user");
+            if (target == null) target = potionTargets(member, slot).stream().findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("No living ally needs this potion"));
+            requireMember(target);
+            var order = CombatRoundV5.PlayerOrder.item(member.runtime, slot, target.runtime);
+            combat.validateOrders(List.of(order)); planner.setOrder(order);
+        }
+        public void clearOrder(Member member) { requireActive(); requireMember(member); planner.clearOrder(member.runtime); }
         /** Null target selects the first living reachable enemy; explicit overrides are validated. */
         public void select(Member member, Action action, Monster target) {
             requireActive(); requireMember(member); Objects.requireNonNull(action);
+            if (action == Action.USE_ITEM) throw new IllegalArgumentException("Select a carried potion slot and ally");
             if (!member.runtime.isAlive()) throw new IllegalArgumentException("Inactive member");
             if (action != Action.ATTACK && action != Action.PARRY && action != Action.RUN && !member.readied.contains(action))
                 throw new IllegalArgumentException("Technique is not readied");

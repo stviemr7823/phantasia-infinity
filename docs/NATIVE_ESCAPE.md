@@ -65,6 +65,6 @@ acknowledgement locks, actual map/planning/result screens, return/pacing and
 post-escape checkpoint reload. Prior suites, Java 21 Gradle tests/compilation and
 the Xvfb window lifecycle remain in CI. Human desktop play-through remains pending.
 
-Next: native combat item use. Final escape balancing, encounter-specific escape
+Native [combat potions](NATIVE_COMBAT_ITEMS.md) are now active. Next: native spell planning. Final escape balancing, encounter-specific escape
 restrictions, story defeat consequences and native normal-launcher migration
 remain separate work.

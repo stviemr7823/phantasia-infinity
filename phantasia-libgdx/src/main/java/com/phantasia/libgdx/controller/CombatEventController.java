@@ -103,9 +103,11 @@ public class CombatEventController {
                 }
             }
 
+            case CombatEvent.ItemUsed item -> { /* Narrator/log only; native item animation is not wired here. */ }
             case CombatEvent.RoundHeader rh -> {
                 // Round separator — no VFX. The log message is sufficient.
             }
         }
     }
 }
+

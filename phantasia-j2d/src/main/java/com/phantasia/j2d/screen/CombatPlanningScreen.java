@@ -537,6 +537,7 @@ public class CombatPlanningScreen implements Screen {
             case CAST     -> "Cast Spell";
             case RUN      -> "Run";
             case NONE     -> "—";
+            case USE_ITEM -> "Item (native)";
         };
     }
 }

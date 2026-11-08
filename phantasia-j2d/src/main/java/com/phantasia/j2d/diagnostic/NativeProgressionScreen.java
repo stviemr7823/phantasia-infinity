@@ -105,11 +105,26 @@ public final class NativeProgressionScreen implements Screen {
                 var reward = battle.settle(); message = result.outcome() + ": XP pool " + reward.experiencePool()
                         + ", gold " + reward.gold() + ". Enter: " + (local == null ? "return to preparation." : "return to area.");
             } else { defaultOrders(); message = "Review the next round. No action runs until Enter."; }
+        } else if (key == KeyEvent.VK_I) {
+            var slots = battle.potionSlots(member).stream().filter(slot -> !battle.potionTargets(member, slot).isEmpty()).toList();
+            if (slots.isEmpty()) throw new IllegalArgumentException("No carried potion can help a living ally right now.");
+            var previous = battle.rows().get(selected).order();
+            int index = previous != null && previous.itemUse() != null ? slots.indexOf(previous.itemUse().slot()) : -1;
+            battle.selectPotion(member, slots.get((index + 1) % slots.size()), null);
+            message = "Potion selected. Y changes ally; Enter confirms the full party plan.";
+        } else if (key == KeyEvent.VK_Y) {
+            var previous = battle.rows().get(selected).order();
+            if (previous == null || previous.itemUse() == null) throw new IllegalArgumentException("Select a potion with I first.");
+            var targets = battle.potionTargets(member, previous.itemUse().slot());
+            if (targets.isEmpty()) throw new IllegalArgumentException("No living ally needs this potion.");
+            int index = -1; for (int i = 0; i < targets.size(); i++) if (targets.get(i).runtime() == previous.allyTarget()) index = i;
+            battle.selectPotion(member, previous.itemUse().slot(), targets.get((index + 1) % targets.size()));
+            message = "Potion ally updated. Review the order before Enter.";
         } else if (key == KeyEvent.VK_T) {
             var living = battle.enemies().stream().filter(Monster::isAlive).toList();
             targetIndex = (targetIndex + 1) % living.size();
             var previous = battle.rows().get(selected).order();
-            if (previous == null || previous.action() == Action.PARRY || previous.action() == Action.RUN)
+            if (previous == null || previous.action() == Action.PARRY || previous.action() == Action.RUN || previous.itemUse() != null)
                 throw new IllegalArgumentException("Choose an attack before overriding its target");
             battle.select(member, previous.action(), living.get(targetIndex));
             message = "Override target: " + living.get(targetIndex).getName();
@@ -130,6 +145,7 @@ public final class NativeProgressionScreen implements Screen {
             var member = campaign.party().get(i);
             if (!member.runtime().isAlive()) continue;
             var previous = battle.rows().get(i).order();
+            if (previous != null && previous.itemUse() != null) { battle.clearOrder(member); continue; }
             var target = previous == null ? null : previous.enemyTarget();
             if (target != null && !target.isAlive()) target = null;
             battle.select(member, previous == null ? Action.ATTACK : previous.action(), target);
@@ -154,8 +170,11 @@ public final class NativeProgressionScreen implements Screen {
             g.drawString("   Learned " + m.learned() + "   Readied " + m.readied(), 70, y + 36);
             if (battle != null) {
                 var row = battle.rows().get(i);
-                g.drawString("   Order: " + (row.order() == null ? "choose" : row.order().action()
-                        + (row.order().enemyTarget() == null ? "" : " -> " + row.order().enemyTarget().getName())) + "   " + row.status(), 70, y + 72);
+                String order = row.order() == null ? "choose" : row.order().itemUse() != null
+                        ? com.phantasia.core.model.item.ItemTable.get(row.order().itemUse().itemId()).name()
+                                + " [slot " + (row.order().itemUse().slot() + 1) + "] -> " + row.order().allyTarget().name()
+                        : row.order().action() + (row.order().enemyTarget() == null ? "" : " -> " + row.order().enemyTarget().getName());
+                g.drawString("   Order: " + order + "   " + row.status(), 70, y + 72);
             } else {
                 var step = campaign.nextTraining(m);
                 g.drawString(step == null ? "   No further test training defined."
@@ -170,7 +189,7 @@ public final class NativeProgressionScreen implements Screen {
                     : "Up/Down: member   " + (local.guild() ? "G: guild training   " : "") + "Esc: return to area", 70, y + 20);
             g.drawString("Outside battle: 1 Thrust / 2 Slash / 3 Lunge / 4 Aim Blow toggle readied (two slots)", 70, y + 57);
         } else {
-            g.drawString("A: attack   D: defend   F: run   1/2: readied slot   T: target   Enter: confirm / result", 70, y + 20);
+            g.drawString("A attack   D defend   F run   I potion   Y ally   1/2 technique   T enemy   Enter confirm / result", 70, y + 20);
             g.drawString("Enemies: " + String.join(", ", battle.enemies().stream().map(e -> e.getName() + " HP " + e.getHp()).toList()), 70, y + 57);
         }
         g.setColor(new Color(240, 210, 125)); g.drawString(message, 70, y + 103);

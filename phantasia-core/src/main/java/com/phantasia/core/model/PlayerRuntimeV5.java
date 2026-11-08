@@ -75,6 +75,17 @@ public final class PlayerRuntimeV5 {
     }
 
     public int equippedItemId(EquipSlot slot) { return state.equipment(slot); }
+    public int inventoryItemId(int slot) {
+        if (slot < 0 || slot >= DataLayoutV5.PC_INVENTORY.length()) throw new IllegalArgumentException("Invalid native pack slot");
+        return state.inventory(slot);
+    }
+    /** Compare-and-consume the planned potion; a changed slot is never substituted. */
+    public boolean consumePotion(int slot, int expectedItemId) {
+        var item = ItemTable.get(expectedItemId);
+        if (!item.isConsumable()) throw new IllegalArgumentException("Not a potion");
+        if (inventoryItemId(slot) != expectedItemId) return false;
+        state.setInventory(slot, 0); return true;
+    }
 
     /**
      * This initial runtime seam enforces item category and level.

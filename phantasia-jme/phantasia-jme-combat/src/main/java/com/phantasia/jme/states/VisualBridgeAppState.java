@@ -247,6 +247,8 @@ public class VisualBridgeAppState extends BaseAppState
             case CombatEvent.Death death -> visualizeDeath(death);
             case CombatEvent.StatusChange sc -> visualizeStatus(sc);
             case CombatEvent.FleeAttempt f -> visualizeFlee(f);
+            case CombatEvent.ItemUsed item -> { /* Narrator/log only; native item animation is not wired here. */ }
+            case CombatEvent.ActionSkipped skipped -> { /* Narrator/log only. */ }
             case CombatEvent.RoundHeader h ->
             {
             } // log only — no 3D effect
@@ -323,3 +325,4 @@ public class VisualBridgeAppState extends BaseAppState
         text.spawnText(label, spatial.getLocalTranslation().add(0, 2.2f, 0), color);
     }
 }
+

@@ -27,11 +27,11 @@ creates a fresh one. The Enter comparison route keeps its separate legacy sessio
 | --- | --- |
 | Preparation | Up/Down member; B battle; G guild training; Esc entry menu |
 | Preparation | 1 Thrust, 2 Slash, 3 Lunge, 4 Aim Blow toggle learned techniques |
-| Battle planning | A attack; D defend; F run; 1/2 readied slot; T override attack target |
+| Battle planning | A attack; D defend; F run; I potion; Y ally; 1/2 readied slot; T override attack target |
 | Round/result | Enter runs one reviewed round or acknowledges a terminal result |
 | Native test | R starts a fresh native test party |
 
-Held confirmation keys are debounced until release. Orders carry forward between
+Held confirmation keys are debounced until release. Potion orders require a fresh selection each round. Other orders carry forward between
 rounds; defeated targets are replaced with an automatic living reachable target
 before the next review. The core planner rejects stale explicit targets. A and
 readied commands can also choose a target explicitly. The fixture currently has
@@ -47,11 +47,10 @@ after changing preparation. Readied selection is atomic, has a configurable slot
 limit, rejects duplicates/unlearned moves and is locked throughout combat,
 including the unacknowledged result screen. Training is likewise locked in battle.
 
-Battle selection admits Attack, Defend, Run and this member's readied physical
-techniques. One order replaces the member's previous order; it does not add another
+Battle selection admits Attack, Defend, Run, carried healing/magic potions and this member's readied physical techniques. One order replaces the member's previous order; it does not add another
 action. The underlying resolver still permits its low-level actions for existing
-tests; campaign callers use the gated Battle API. Spells, items and special
-companions are outside this initial native screen.
+tests; campaign callers use the gated Battle API. See [native combat items](NATIVE_COMBAT_ITEMS.md) for potion targeting and consumption.
+Spells, scroll use and special companions remain outside this native screen.
 
 The new Agility-ordered factory fixes initiative by player Agility and explicit
 caller-supplied enemy Agility, with stable input-order ties and the resolver's
