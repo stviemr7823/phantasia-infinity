@@ -91,4 +91,4 @@ learned moves in later battles, menu/world return, reset and headless rendering.
 Previous suites, the Java 21 Gradle build and the AWT/Xvfb window lifecycle remain
 in CI. Manual desktop play-through and final phone controls remain pending.
 
-Native [combat potions](NATIVE_COMBAT_ITEMS.md) are now active. Next: native spell planning and a decision on making this route the default.
+Native [combat potions](NATIVE_COMBAT_ITEMS.md) are now active. Native [spell planning](NATIVE_SPELL_PLANNING.md) is active. Next: native inventory/equipment preparation and a decision on making this route the default.

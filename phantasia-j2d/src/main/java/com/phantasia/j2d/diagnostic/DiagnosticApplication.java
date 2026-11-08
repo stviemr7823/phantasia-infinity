@@ -113,6 +113,12 @@ public final class DiagnosticApplication {
                 case KeyEvent.VK_ESCAPE -> { if (pause) manager.pop(); }
                 case KeyEvent.VK_R -> reset();
                 case KeyEvent.VK_V -> { if (!pause) manager.switchTo(GameState.NATIVE_DIAGNOSTIC, null); }
+                case KeyEvent.VK_C -> {
+                    if (!pause && nativeCampaign().activeBattle() == null) {
+                        install(session, DiagnosticSpells.freshCampaign(), null, null);
+                        saveMessage = "Fresh non-canon caster party. N explores; V tests standalone battles.";
+                    }
+                }
                 case KeyEvent.VK_N -> { if (!pause) enterNative(entryMap); }
                 case KeyEvent.VK_F5, KeyEvent.VK_F9 -> {
                     if (nativeSavePath == null) { saveMessage = "Enable checkpoints with --native-save PATH."; break; }
@@ -139,7 +145,7 @@ public final class DiagnosticApplication {
             for (int i = 0; i < lines.length; i++) g.drawString(lines[i], 155, 285 + i * 65);
             if (!pause) {
                 g.drawString("N: authored areas with the native party", 155, 285 + lines.length * 65);
-                g.drawString("V: native party preparation and standalone battle test", 155, 330 + lines.length * 65);
+                g.drawString("V: native party preparation / battle   C: fresh caster test party", 155, 330 + lines.length * 65);
             }
             g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 23));
             g.drawString(nativeSavePath == null ? "Checkpoints disabled (optional --native-save PATH)." : "F5: native checkpoint   F9: load (entry menu or native map pause)", 155, h - 80);

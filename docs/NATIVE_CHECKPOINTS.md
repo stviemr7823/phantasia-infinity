@@ -87,5 +87,5 @@ native/legacy map and combat suites, Java 21 Gradle tests/compilation and Xvfb
 window lifecycle remain in CI. Human desktop play-through remains pending.
 
 Native [inn/bank services](NATIVE_INN_BANK.md) now use this checkpoint state. Next:
-native spell planning; [combat potions](NATIVE_COMBAT_ITEMS.md) and [guild terms and stock](NATIVE_GUILD_STOCK.md) now persist. Mid-battle
+native inventory/equipment preparation; [spell planning](NATIVE_SPELL_PLANNING.md), [combat potions](NATIVE_COMBAT_ITEMS.md) and [guild terms and stock](NATIVE_GUILD_STOCK.md) now persist. Mid-battle
 snapshots and making the native route the normal launcher remain separate work.

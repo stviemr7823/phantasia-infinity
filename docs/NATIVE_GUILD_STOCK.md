@@ -99,5 +99,5 @@ checkpoints, source validation and fresh-JVM reload. The service suite now has
 tests/compilation and the Xvfb window lifecycle remain in CI. Human desktop
 play-through and final phone controls remain pending.
 
-Native [battle escape](NATIVE_ESCAPE.md) is now active. Native [combat potions](NATIVE_COMBAT_ITEMS.md) are now active. Next: native spell planning. Automatic restocking, additional final balance rules
+Native [battle escape](NATIVE_ESCAPE.md) is now active. Native [combat potions](NATIVE_COMBAT_ITEMS.md) are now active. Native [spell planning](NATIVE_SPELL_PLANNING.md) is active with explicit test permissions. Next: native inventory/equipment preparation. Automatic restocking, additional final balance rules
 and moving the native route into the normal launcher remain separate work.

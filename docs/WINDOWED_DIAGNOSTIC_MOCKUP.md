@@ -105,7 +105,7 @@ Optional native checkpoint save/load is enabled with --native-save PATH; see
 [NATIVE_CHECKPOINTS.md](NATIVE_CHECKPOINTS.md). Native [inn/bank counters](NATIVE_INN_BANK.md)
 are active at settlement positions (15,9) and (17,9). The guild counter at (19,9) and shop finite/one-time listings are also active;
 see [NATIVE_GUILD_STOCK.md](NATIVE_GUILD_STOCK.md). Native [escape](NATIVE_ESCAPE.md) is also active: F selects Run, Enter confirms.
-Native [combat potions](NATIVE_COMBAT_ITEMS.md) are now active. Next: native spell planning.
+Native [combat potions](NATIVE_COMBAT_ITEMS.md) are now active. Native [spell planning](NATIVE_SPELL_PLANNING.md) is active with explicit test permissions. Next: native inventory/equipment preparation.
 
 Encounter pacing, reward receipts and return paths are detailed in
 [LOCAL_ENCOUNTERS.md](LOCAL_ENCOUNTERS.md).

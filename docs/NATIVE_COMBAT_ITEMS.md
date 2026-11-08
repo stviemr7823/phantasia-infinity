@@ -32,7 +32,7 @@ potion use is implied by the previous round.
 
 ## Compatibility and limits
 
-Only existing HP and MP potions are exposed. Scrolls, resurrection items, spells,
+Only existing HP and MP potions are exposed. Scrolls, resurrection items,
 item transfer and equipment changes are not introduced. No new balance values or
 canonical content are added. USE_ITEM is appended to Action to preserve existing
 ordinal positions. Legacy item-use behavior is unchanged. The shared narrator and
@@ -60,4 +60,4 @@ The local compatibility run uses temporary Java 17 source substitutions; Java 21
 CI checks the actual source. JME/libGDX adapter edits are not a full build of those
 frontends. Human desktop playthrough remains pending.
 
-Next: expose native spell planning with equally explicit target and resource checks.
+Native [spell planning](NATIVE_SPELL_PLANNING.md) is now active. Next: native inventory/equipment preparation.

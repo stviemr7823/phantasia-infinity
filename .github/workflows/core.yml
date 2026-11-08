@@ -29,6 +29,7 @@ jobs:
       - run: bash run_native_economy.sh
       - run: bash run_native_escape.sh
       - run: bash run_native_items.sh
+      - run: bash run_native_spells.sh
       - run: timeout 30s xvfb-run -a bash run_mockup.sh --window-smoke
       - run: ./gradlew :phantasia-core:test :phantasia-j2d:compileJava :phantasia-editor:compileJava
 

@@ -343,8 +343,13 @@ public final class NativeCampaignV5 implements LocalSession {
         }
         public List<Monster> enemies() { return enemies; }
         public CombatOutcome outcome() { return combat.outcome(); }
-        public List<CombatOrderPlannerV5.OrderRow> rows() { return planner.orderRows(); }
-        public boolean canConfirm() { return !acknowledged && planner.canConfirm(); }
+        public List<CombatOrderPlannerV5.OrderRow> rows() {
+            return planner.orderRows().stream().map(row -> row.status() == CombatOrderPlannerV5.RowStatus.READY
+                    && row.order().spell() != null && (row.actor().mp() < row.order().spell().getMpCost()
+                    || row.order().allyTarget() != null && !row.order().allyTarget().isAlive())
+                    ? new CombatOrderPlannerV5.OrderRow(row.actor(), row.order(), CombatOrderPlannerV5.RowStatus.NEEDS_REVIEW) : row).toList();
+        }
+        public boolean canConfirm() { return !acknowledged && planner.canConfirm() && rows().stream().noneMatch(r -> r.status() == CombatOrderPlannerV5.RowStatus.NEEDS_REVIEW); }
         private void requireActive() { if (active != this || acknowledged) throw new IllegalStateException("Battle is no longer active"); }
         public List<Integer> potionSlots(Member member) {
             requireActive(); requireMember(member);
@@ -370,6 +375,33 @@ public final class NativeCampaignV5 implements LocalSession {
             var order = CombatRoundV5.PlayerOrder.item(member.runtime, slot, target.runtime);
             combat.validateOrders(List.of(order)); planner.setOrder(order);
         }
+        /** Null single targets choose the first living target; group casts use the complete living group. */
+        public void selectSpell(Member member, NativeSpellBook book, int id, Monster enemy, Member ally) {
+            requireActive(); requireMember(member);
+            var entry = Objects.requireNonNull(book).entry(id); var spell = entry.spell();
+            if (!member.isAlive() || !entry.permits(member)) throw new IllegalArgumentException("Spell is not available to this member");
+            if (member.runtime.mp() < spell.getMpCost()) throw new IllegalArgumentException("Insufficient MP; review the order");
+            switch (spell.getTargetType()) {
+                case SINGLE_ENEMY -> {
+                    if (ally != null) throw new IllegalArgumentException("Enemy spell takes no ally");
+                    if (enemy == null) enemy = enemies.stream().filter(Monster::isAlive).findFirst().orElseThrow();
+                    if (!enemy.isAlive()) throw new IllegalArgumentException("Target has fallen");
+                }
+                case SINGLE_ALLY -> {
+                    if (enemy != null) throw new IllegalArgumentException("Ally spell takes no enemy");
+                    if (ally == null) ally = party.stream().filter(Member::isAlive)
+                            .filter(m -> spell.getEffectType() == Spell.EffectType.HEAL ? m.runtime.hp() < m.runtime.maxHp() : m.runtime.isAsleep())
+                            .findFirst().orElseGet(() -> party.stream().filter(Member::isAlive).findFirst().orElseThrow());
+                    requireMember(ally);
+                    if (!ally.isAlive()) throw new IllegalArgumentException("Target has fallen");
+                }
+                case ALL_ENEMIES, ALL_ALLIES -> {
+                    if (enemy != null || ally != null) throw new IllegalArgumentException("Group spell takes no individual target");
+                }
+            }
+            var order = CombatRoundV5.PlayerOrder.cast(member.runtime, spell, enemy, ally == null ? null : ally.runtime);
+            combat.validateOrders(List.of(order)); planner.setOrder(order);
+        }
         public void clearOrder(Member member) { requireActive(); requireMember(member); planner.clearOrder(member.runtime); }
         /** Null target selects the first living reachable enemy; explicit overrides are validated. */
         public void select(Member member, Action action, Monster target) {
@@ -393,7 +425,10 @@ public final class NativeCampaignV5 implements LocalSession {
             combat.validateOrders(List.of(order)); planner.setOrder(order);
         }
         public RoundResult confirmRound() {
-            requireActive(); var result = planner.confirmRound();
+            requireActive();
+            if (rows().stream().anyMatch(r -> r.status() == CombatOrderPlannerV5.RowStatus.NEEDS_REVIEW))
+                throw new IllegalStateException("Orders need review before confirmation");
+            var result = planner.confirmRound();
             if (result.isCombatOver()) settle(); return result;
         }
         /** Terminal reward receipt is idempotent, including repeated UI entry. */
