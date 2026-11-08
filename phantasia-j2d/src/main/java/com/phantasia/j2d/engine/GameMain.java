@@ -139,7 +139,7 @@ public class GameMain {
         // Stopping the game loop unblocks awaitShutdown() below, which
         // triggers the shutdown hook → auto-save → System.exit.
         screenManager.register(GameState.DEFEAT,
-                new DefeatScreen(gameLoop::stop));
+                new DefeatScreen(screenManager, gameLoop::stop));
 
         screenManager.register(GameState.DIALOGUE,
                 new DialogueScreen(screenManager));
@@ -161,6 +161,9 @@ public class GameMain {
 
         screenManager.register(GameState.PAUSE,
                 new PauseScreen(screenManager, gameLoop));
+
+        screenManager.register(GameState.LOCAL_MAP,
+                new LocalMapScreen(screenManager, session, npcRegistry, shopRegistry));
 
         screenManager.register(GameState.TOWN,
                 new TownRoamScreen(screenManager, session,
@@ -306,19 +309,15 @@ public class GameMain {
     }
 
     private static InteriorMapRegistry loadInteriorMaps() {
-        try {
-            InteriorMapRegistry reg =
-                    InteriorMapLoader.load(DataPaths.INTERIORS_DAT);
-            if (reg.size() > 0) {
-                System.out.println("[GameMain] Loaded interior map registry: "
-                        + reg.size() + " maps.");
-                return reg;
-            }
-        } catch (IOException e) {
-            System.err.println("[GameMain] interiors.dat load failed ("
-                    + e.getMessage() + ") — using built-in maps.");
+        if (!java.nio.file.Files.exists(java.nio.file.Path.of(DataPaths.INTERIORS_DAT))) {
+            System.out.println("[GameMain] No authored interiors file; using built-in maps.");
+            return InteriorMapRegistry.buildDefault();
         }
-        System.out.println("[GameMain] Using built-in interior map registry.");
-        return InteriorMapRegistry.buildDefault();
+        try {
+            // Existing exports, including an intentionally empty one, are authoritative.
+            return InteriorMapLoader.load(DataPaths.INTERIORS_DAT);
+        } catch (IOException e) {
+            throw new java.io.UncheckedIOException("Cannot load authored interiors: " + DataPaths.INTERIORS_DAT, e);
+        }
     }
 }

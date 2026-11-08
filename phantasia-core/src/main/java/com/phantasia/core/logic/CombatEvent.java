@@ -21,6 +21,7 @@ public sealed interface CombatEvent permits
         CombatEvent.SpellCast,
         CombatEvent.StatusChange,
         CombatEvent.FleeAttempt,
+        CombatEvent.ItemUsed,
         CombatEvent.RoundHeader
 {
     // ------------------------------------------------------------------
@@ -87,6 +88,10 @@ public sealed interface CombatEvent permits
             String  entityName,
             boolean succeeded
     ) implements CombatEvent {}
+
+    /** Amount is the actual clamped restoration; magic selects MP instead of HP. */
+    record ItemUsed(String actorName, int itemId, String itemName, String targetName,
+                    int amount, boolean magic) implements CombatEvent {}
 
     // ------------------------------------------------------------------
     // Marks the start of a round in the event log — useful for

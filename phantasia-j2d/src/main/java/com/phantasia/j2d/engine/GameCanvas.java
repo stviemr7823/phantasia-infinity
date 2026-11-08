@@ -102,6 +102,19 @@ public class GameCanvas extends Canvas {
         createBufferStrategy(3);
     }
 
+    /** Resizable diagnostic window. Call on the AWT event thread. */
+    public void enterWindowed(String title, int width, int height, Runnable onClose) {
+        if (!EventQueue.isDispatchThread()) throw new IllegalStateException("Window creation must run on the AWT event thread");
+        if (frame != null) throw new IllegalStateException("Canvas already has a window");
+        frame = new Frame(title);
+        setPreferredSize(new Dimension(width, height)); frame.add(this); frame.pack();
+        frame.setMinimumSize(new Dimension(640, 360)); frame.setLocationRelativeTo(null);
+        frame.addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override public void windowClosing(java.awt.event.WindowEvent event) { onClose.run(); }
+        });
+        frame.setVisible(true); createBufferStrategy(3); requestFocusInWindow();
+    }
+
     public void shutdown() {
         GraphicsDevice gd = GraphicsEnvironment
                 .getLocalGraphicsEnvironment()

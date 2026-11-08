@@ -20,5 +20,6 @@ public enum Action {
     // Magic & Misc
     CAST,        // Triggers the SpellFactory/MagicBridge
     RUN,         // Escape attempt based on Speed/Dexterity
-    NONE         // Default/Idle state
+    NONE,        // Default/Idle state
+    USE_ITEM     // Native carried potion order; appended to preserve existing ordinals
 }

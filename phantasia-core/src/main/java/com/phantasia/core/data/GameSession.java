@@ -33,7 +33,12 @@ import java.util.List;
  * <h3>Thread safety</h3>
  * Not thread-safe. All mutations happen on the game loop thread.
  */
-public class GameSession {
+public class GameSession implements LocalSession {
+
+    public List<PlayerCharacter> localMembers() { return party; }
+    public int getPartyGold() { return ledger.getPartyGold(); }
+    public void addGold(int gold) { ledger.addGold(gold); }
+    public boolean spendGold(int gold) { return ledger.spendGold(gold); }
 
     private final List<PlayerCharacter> party;
     private final PartyLedger           ledger;
@@ -43,6 +48,12 @@ public class GameSession {
 
     // Runtime-only state (not serialized in the save file)
     private DungeonFloor currentDungeonFloor;
+    private final LocalInteractionState localInteractions = new LocalInteractionState();
+    public LocalInteractionState getLocalInteractions() { return localInteractions; }
+    private final List<CombatRewards> pendingCombatRewards = new ArrayList<>();
+    public List<CombatRewards> getPendingCombatRewards() { return List.copyOf(pendingCombatRewards); }
+    public void queueCombatReward(CombatRewards reward) { if (!pendingCombatRewards.contains(reward)) pendingCombatRewards.add(reward); }
+    public void removeCombatReward(CombatRewards reward) { pendingCombatRewards.remove(reward); }
 
     // -------------------------------------------------------------------------
     // Constructors

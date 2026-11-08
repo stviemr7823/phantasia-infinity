@@ -23,11 +23,11 @@ import static com.phantasia.j2d.render.ParchmentRenderer.*;
  * who have accumulated enough XP to train at the guild show a gold
  * {@code ★ READY} badge — a clear call-to-action to visit the guild.</p>
  *
- * <p>XP and gold are awarded in {@link #onEnter(Object)} so they are
- * applied exactly once regardless of how long the player lingers here.</p>
+ * <p>A shared battle receipt awards XP and gold once, including repeated
+ * entry into {@link #onEnter(Object)}.</p>
  *
  * <p>Transition data: {@link CombatExecutionScreen.ExecutionData}<br>
- * Exit: any key after 0.5 s → fade to {@link GameState#WORLD_ROAM}</p>
+ * Exit: any key after 0.5 s → fade to the retained battle return route</p>
  */
 public class VictoryScreen implements Screen {
 
@@ -38,6 +38,8 @@ public class VictoryScreen implements Screen {
     private int   totalXP;
     private int   totalGold;
     private float elapsed;
+    private com.phantasia.j2d.engine.BattleContinuation continuation;
+    private boolean leaving, goldPending;
 
     public VictoryScreen(ScreenManager screenManager) {
         this.screenManager = screenManager;
@@ -54,15 +56,9 @@ public class VictoryScreen implements Screen {
         this.enemies = data.enemies();
         this.elapsed = 0f;
 
-        // Tally totals from the defeated enemy formation
-        totalXP   = enemies.stream().mapToInt(Entity::getExperience).sum();
-        totalGold = enemies.stream().mapToInt(Monster::getTreasure).sum();
-
-        // Award XP and gold exactly once — live party refs mean mutations
-        // are immediately visible in the render loop below
-        GameSession session = data.session();
-        ExperienceTable.awardCombatXp(party, totalXP);
-        session.getLedger().addGold(totalGold);
+        continuation = data.continuation(); leaving = false;
+        var receipt = continuation.victory();
+        totalXP = receipt.experience(); totalGold = receipt.gold(); goldPending = !receipt.goldClaimed();
     }
 
     @Override
@@ -98,7 +94,7 @@ public class VictoryScreen implements Screen {
         // ── XP and Gold summary ───────────────────────────────────────────
         drawTextCentered(g, "Experience earned:  " + totalXP + " XP",
                 px, py + 108, pw, TextStyle.BODY, TEXT);
-        drawTextCentered(g, "Gold found:  " + totalGold + " gp",
+        drawTextCentered(g, "Gold found:  " + totalGold + (goldPending ? " (pending: purse limit)" : "") + " gp",
                 px, py + 138, pw, TextStyle.BODY, GOLD);
 
         drawDivider(g, px + 60, py + 160, pw - 120);
@@ -167,8 +163,7 @@ public class VictoryScreen implements Screen {
 
     @Override
     public void onKeyPressed(KeyEvent e) {
-        if (elapsed > 0.5f)
-            screenManager.fadeTo(GameState.WORLD_ROAM, null);
+        if (elapsed > 0.5f && !leaving) { leaving = true; continuation.returnVictory(screenManager); }
     }
 
     @Override

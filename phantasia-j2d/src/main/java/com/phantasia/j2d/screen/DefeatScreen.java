@@ -24,23 +24,27 @@ import static com.phantasia.j2d.render.ParchmentRenderer.*;
  * narrative weight to the loss.</p>
  *
  * <p>Transition data: {@link CombatExecutionScreen.ExecutionData}<br>
- * Exit: any key after 2 s → calls the {@code onQuit} runnable
- * (typically {@code gameLoop::stop})</p>
+ * Exit: any key after 2 s returns a local battle to its retained area;
+ * other battles call the {@code onQuit} runnable.</p>
  */
 public class DefeatScreen implements Screen {
 
     private final Runnable onQuit;
+    private final com.phantasia.j2d.engine.ScreenManager screenManager;
 
     private List<PlayerCharacter> party;
     private String                slainBy;
     private float                 elapsed;
+    private com.phantasia.j2d.engine.BattleContinuation continuation;
+    private boolean leaving;
 
     /**
      * @param onQuit called when the player acknowledges defeat
      *               (e.g. {@code gameLoop::stop})
      */
-    public DefeatScreen(Runnable onQuit) {
-        this.onQuit = onQuit;
+    public DefeatScreen(Runnable onQuit) { this(null, onQuit); }
+    public DefeatScreen(com.phantasia.j2d.engine.ScreenManager screenManager, Runnable onQuit) {
+        this.screenManager = screenManager; this.onQuit = onQuit;
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -49,10 +53,11 @@ public class DefeatScreen implements Screen {
 
     @Override
     public void onEnter(Object transitionData) {
-        elapsed = 0f;
+        elapsed = 0f; continuation = null; leaving = false;
 
         if (transitionData instanceof CombatExecutionScreen.ExecutionData data) {
             this.party = data.party();
+            this.continuation = data.continuation();
 
             // Build a short "slain by" line from the distinct enemy types
             List<String> names = data.enemies().stream()
@@ -134,7 +139,7 @@ public class DefeatScreen implements Screen {
             float alpha = Math.min(1f, (elapsed - 2f) * 1.5f);
             Composite old = g.getComposite();
             g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
-            drawTextCentered(g, "Press any key to return to the void",
+            drawTextCentered(g, continuation != null && continuation.isLocal() ? "Press any key to return to the area; Esc then opens pause" : "Press any key to return to the void",
                     px, py + ph - 32, pw, TextStyle.DATA, BORDER_STR);
             g.setComposite(old);
         }
@@ -146,8 +151,11 @@ public class DefeatScreen implements Screen {
 
     @Override
     public void onKeyPressed(KeyEvent e) {
-        if (elapsed > 1.5f && onQuit != null)
-            onQuit.run();
+        if (elapsed > 1.5f && !leaving) {
+            leaving = true;
+            if (continuation != null && continuation.isLocal() && screenManager != null) continuation.returnDefeat(screenManager);
+            else if (onQuit != null) onQuit.run();
+        }
     }
 
     @Override

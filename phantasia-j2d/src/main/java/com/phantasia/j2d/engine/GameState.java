@@ -26,6 +26,18 @@ public enum GameState {
     /** Town interior — walkable tile map with NPCs and service counters. */
     TOWN,
 
+    /** Shared authored town/castle/dungeon traversal. */
+    LOCAL_MAP,
+
+    /** Isolated native party progression diagnostic; registered by the test launcher. */
+    NATIVE_DIAGNOSTIC,
+
+    /** Authored-map diagnostic backed by the native party owner. */
+    NATIVE_LOCAL_MAP,
+
+    /** Native inn/bank overlay using authored service terms. */
+    NATIVE_SERVICE,
+
     /** Dungeon roam — interior tile movement with fog of war. */
     DUNGEON,
 

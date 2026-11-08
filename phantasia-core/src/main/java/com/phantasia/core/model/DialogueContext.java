@@ -1,7 +1,7 @@
 // phantasia-core/src/main/java/com/phantasia/core/model/DialogueContext.java
 package com.phantasia.core.model;
 
-import com.phantasia.core.data.GameSession;
+import com.phantasia.core.data.LocalSession;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -45,19 +45,19 @@ public record DialogueContext(
      * @param session the active game session
      * @return an immutable context for text rendering
      */
-    public static DialogueContext freeze(String npcName, GameSession session) {
+    public static DialogueContext freeze(String npcName, LocalSession session) {
 
-        List<PlayerCharacter> party = session.getParty();
+        var party = session.localMembers();
 
         String leaderName = party.isEmpty()
                 ? "Adventurer"
                 : party.getFirst().getName();
 
         int aliveCount = (int) party.stream()
-                .filter(PlayerCharacter::isAlive)
+                .filter(LocalSession.Member::isAlive)
                 .count();
 
-        int gold = session.getLedger().getPartyGold();
+        int gold = session.getPartyGold();
 
         // --- Token map for {token} substitution ---
         Map<String, String> tokens = new LinkedHashMap<>();

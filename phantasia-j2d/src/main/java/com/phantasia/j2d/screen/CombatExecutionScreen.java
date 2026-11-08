@@ -47,8 +47,15 @@ public class CombatExecutionScreen implements Screen {
             CombatNarrator        narrator,
             CombatManager         manager,
             int                   roundNumber,
-            GameSession session
-    ) {}
+            GameSession session,
+            com.phantasia.j2d.engine.BattleContinuation continuation
+    ) {
+        public ExecutionData(List<PlayerCharacter> party, List<Monster> enemies, RoundResult result,
+                             CombatNarrator narrator, CombatManager manager, int roundNumber, GameSession session) {
+            this(party, enemies, result, narrator, manager, roundNumber, session,
+                    new com.phantasia.j2d.engine.BattleContinuation(session, enemies));
+        }
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     // Layout constants
@@ -85,6 +92,7 @@ public class CombatExecutionScreen implements Screen {
     // ─────────────────────────────────────────────────────────────────────
 
     private ExecutionData data;
+    private boolean transitionQueued;
     private List<String>  narrationLines;
 
     // Event playback
@@ -121,6 +129,7 @@ public class CombatExecutionScreen implements Screen {
     @Override
     public void onEnter(Object transitionData) {
         this.data = (ExecutionData) transitionData;
+        transitionQueued = false;
         this.narrationLines = data.narrator().narrateRound(data.result());
 
         currentEventIndex = 0;
@@ -349,6 +358,8 @@ public class CombatExecutionScreen implements Screen {
     // ─────────────────────────────────────────────────────────────────────
 
     private void transitionOut() {
+        if (transitionQueued) return;
+        transitionQueued = true;
         RoundResult result = data.result();
 
         if (result.isVictory()) {
@@ -356,7 +367,7 @@ public class CombatExecutionScreen implements Screen {
         } else if (result.isDefeat()) {
             screenManager.fadeTo(GameState.DEFEAT, data);
         } else if (result.isEscape()) {
-            screenManager.fadeTo(GameState.WORLD_ROAM, null);
+            data.continuation().returnEscape(screenManager);
         } else {
             // Ongoing — back to planning for next round
             CombatPlanningScreen.PlanningResult nextRound =
@@ -364,7 +375,7 @@ public class CombatExecutionScreen implements Screen {
                             data.party(), data.enemies(),
                             data.manager(), data.narrator(),
                             data.roundNumber() + 1,
-                            data.session()
+                            data.session(), data.continuation()
                     );
             screenManager.fadeTo(GameState.COMBAT_PLANNING, nextRound);
         }

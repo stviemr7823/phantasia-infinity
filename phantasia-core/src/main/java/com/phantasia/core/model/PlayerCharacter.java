@@ -11,8 +11,11 @@ import java.util.Map;
 
 import static com.phantasia.core.model.item.ItemCategory.*;
 
-public class PlayerCharacter extends Entity
+public class PlayerCharacter extends Entity implements com.phantasia.core.data.LocalSession.Member
 {
+    public int getMaxHp() { return getStat(Stat.MAX_HP); }
+    public int getAgility() { return getStat(Stat.DEXTERITY); }
+    public int inventorySlots() { return com.phantasia.core.model.item.Inventory.MAX_ITEMS; }
 
     private final DataCore core;
     private final Map<EquipSlot, ItemDefinition> equipment = new EnumMap<>(EquipSlot.class);

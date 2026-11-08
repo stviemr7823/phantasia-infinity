@@ -1,7 +1,7 @@
 // phantasia-core/src/main/java/com/phantasia/core/model/DialogueScript.java
 package com.phantasia.core.model;
 
-import com.phantasia.core.data.GameSession;
+import com.phantasia.core.data.LocalSession;
 import com.phantasia.core.data.QuestFlag;
 
 import java.util.ArrayList;
@@ -65,7 +65,7 @@ public class DialogueScript {
      * @param context the dialogue context for text rendering
      * @return the result containing rendered lines and any side effects
      */
-    public DialogueResult evaluate(GameSession session, DialogueContext context) {
+    public DialogueResult evaluate(LocalSession session, DialogueContext context) {
         for (DialogueNode node : nodes) {
             if (matches(node, session)) {
                 // Apply side effect: set quest flag
@@ -95,7 +95,7 @@ public class DialogueScript {
      * Legacy convenience method — returns just the text of the first matching node.
      * Preserves backward compatibility with existing callers.
      */
-    public String getActiveText(GameSession session) {
+    public String getActiveText(LocalSession session) {
         for (DialogueNode node : nodes) {
             if (matches(node, session)) {
                 if (node.flagToSet() != null) {
@@ -111,7 +111,7 @@ public class DialogueScript {
     // Condition matching
     // -------------------------------------------------------------------------
 
-    private boolean matches(DialogueNode node, GameSession session) {
+    private boolean matches(DialogueNode node, LocalSession session) {
         // All required flags must be set
         for (QuestFlag flag : node.requiredFlags()) {
             if (!session.hasFlag(flag)) return false;

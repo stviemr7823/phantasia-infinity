@@ -2,11 +2,12 @@
 package com.phantasia.j2d.screen;
 
 import com.phantasia.core.data.GameSession;
+import com.phantasia.core.data.LocalSession;
 import com.phantasia.core.data.ShopEntry;
 import com.phantasia.core.data.ShopInventory;
 import com.phantasia.core.model.Job;
 import com.phantasia.core.model.PlayerCharacter;
-import com.phantasia.core.model.item.Inventory;
+import com.phantasia.core.model.item.LocalInventory;
 import com.phantasia.core.model.item.ItemCategory;
 import com.phantasia.core.model.item.ItemDefinition;
 import com.phantasia.core.model.item.ItemTable;
@@ -59,9 +60,8 @@ import static com.phantasia.j2d.render.ParchmentRenderer.*;
  * Quest items ({@link ItemDefinition#isQuestItem()}) cannot be sold.
  *
  * <h3>Stock quantity</h3>
- * {@link ShopEntry#quantity()} is displayed but runtime stock depletion is not
- * yet tracked (requires a future ShopRegistry with mutable state). Unlimited
- * stock (-1) is the current practical default.
+ * Native campaigns track finite stock and one-time purchases in campaign state.
+ * The legacy comparison route retains its prior unlimited runtime behavior.
  */
 public class ShopOverlay implements Screen {
 
@@ -75,7 +75,9 @@ public class ShopOverlay implements Screen {
      * @param inventory the shop's item listing
      * @param session   the live game session (provides ledger and party)
      */
-    public record ShopData(ShopInventory inventory, GameSession session) {}
+    public record ShopData(ShopInventory inventory, LocalSession session, String catalog) {
+        public ShopData(ShopInventory inventory, LocalSession session) { this(inventory, session, com.phantasia.core.logic.NativeShopState.registered(inventory)); }
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     // Layout constants (design resolution 1920×1080)
@@ -116,6 +118,7 @@ public class ShopOverlay implements Screen {
 
     private ShopData              data;
     private List<ShopEntry>       visibleEntries;
+    private List<Integer> visibleRows;
 
     private int     shopScrollOffset;    // first visible row index
     private int     selectedShopRow;     // absolute index into visibleEntries
@@ -141,8 +144,7 @@ public class ShopOverlay implements Screen {
     @Override
     public void onEnter(Object transitionData) {
         this.data           = (ShopData) transitionData;
-        this.visibleEntries = data.inventory()
-                .getAvailableEntries(data.session()::hasFlag);
+        refreshStock();
 
         shopScrollOffset     = 0;
         selectedShopRow      = 0;
@@ -174,7 +176,7 @@ public class ShopOverlay implements Screen {
         String title = data.inventory().getName().toUpperCase();
         drawTextCentered(g, title, OX, OY + 50, OW, TextStyle.HEADER, GOLD_BRIGHT);
 
-        int gold = data.session().getLedger().getPartyGold();
+        int gold = data.session().getPartyGold();
         drawText(g, "GOLD:  " + gold, OX + OW - 210, OY + 50, TextStyle.DATA, GOLD_BRIGHT);
 
         drawDivider(g, OX + 24, OY + 64, OW - 48);
@@ -226,19 +228,19 @@ public class ShopOverlay implements Screen {
                             shopScrollOffset++;
                     }
                 } else {
-                    if (selectedInventorySlot < Inventory.MAX_ITEMS - 1)
+                    if (selectedInventorySlot < currentPc().inventorySlots() - 1)
                         selectedInventorySlot++;
                 }
             }
 
             case KeyEvent.VK_LEFT -> {
-                int size = data.session().getParty().size();
+                int size = data.session().localMembers().size();
                 selectedPartyIndex = (selectedPartyIndex - 1 + size) % size;
                 selectedInventorySlot = 0;
             }
 
             case KeyEvent.VK_RIGHT -> {
-                int size = data.session().getParty().size();
+                int size = data.session().localMembers().size();
                 selectedPartyIndex = (selectedPartyIndex + 1) % size;
                 selectedInventorySlot = 0;
             }
@@ -256,24 +258,44 @@ public class ShopOverlay implements Screen {
     // Buy / sell logic
     // ─────────────────────────────────────────────────────────────────────
 
+    private void refreshStock() {
+        visibleRows = java.util.stream.IntStream.range(0, data.inventory().getEntries().size())
+                .filter(row -> {
+                    var entry = data.inventory().getEntries().get(row);
+                    if (data.session() instanceof com.phantasia.core.logic.NativeCampaignV5 nativeParty)
+                        return nativeParty.shopState().quote(data.catalog(), data.inventory(), row, nativeParty::hasFlag).visible();
+                    return entry.requiredFlag() == null || data.session().hasFlag(entry.requiredFlag());
+                }).boxed().toList();
+        visibleEntries = visibleRows.stream().map(row -> data.inventory().getEntries().get(row)).toList();
+        selectedShopRow = Math.max(0, Math.min(selectedShopRow, visibleEntries.size() - 1));
+        shopScrollOffset = Math.min(shopScrollOffset, selectedShopRow);
+    }
+
     private void attemptBuy() {
         if (visibleEntries.isEmpty()) return;
+        if (data.session() instanceof com.phantasia.core.logic.NativeCampaignV5 nativeParty) {
+            try {
+                nativeParty.buy(data.catalog(), data.inventory(), visibleRows.get(selectedShopRow), nativeParty.party().get(selectedPartyIndex));
+                errorMessage = null; errorTimer = 0f; refreshStock();
+            } catch (IllegalArgumentException | IllegalStateException ex) { showError(ex.getMessage()); }
+            return;
+        }
 
         ShopEntry      entry = visibleEntries.get(selectedShopRow);
         ItemDefinition item  = ItemTable.get(entry.itemId());
         int            price = buyPrice(entry, item);
 
-        PlayerCharacter pc  = currentPc();
-        Inventory       inv = new Inventory(pc);
+        LocalSession.Member pc  = currentPc();
+        LocalInventory  inv = new LocalInventory(pc);
 
-        if (!data.session().getLedger().spendGold(price)) {
+        if (!data.session().spendGold(price)) {
             showError("Not enough gold!");
             return;
         }
 
         if (!inv.add(entry.itemId())) {
             // Refund — pack is full
-            data.session().getLedger().addGold(price);
+            data.session().addGold(price);
             showError(pc.getName() + "'s pack is full!");
         }
         // NOTE: ShopEntry.quantity() depletion deferred to a future ShopRegistry
@@ -281,8 +303,8 @@ public class ShopOverlay implements Screen {
     }
 
     private void attemptSell() {
-        PlayerCharacter pc  = currentPc();
-        Inventory       inv = new Inventory(pc);
+        LocalSession.Member pc  = currentPc();
+        LocalInventory  inv = new LocalInventory(pc);
 
         int itemId = inv.getItemId(selectedInventorySlot);
         if (itemId == 0) return; // empty slot
@@ -294,12 +316,15 @@ public class ShopOverlay implements Screen {
         }
 
         int sellPrice = Math.max(1, item.gold() / 2);
+        if ((long) data.session().getPartyGold() + sellPrice > Integer.MAX_VALUE) {
+            showError("The party cannot carry this much gold."); return;
+        }
         inv.removeAt(selectedInventorySlot);
-        data.session().getLedger().addGold(sellPrice);
+        data.session().addGold(sellPrice);
 
         // Keep selection in bounds after removal
-        if (selectedInventorySlot >= Inventory.MAX_ITEMS)
-            selectedInventorySlot = Inventory.MAX_ITEMS - 1;
+        if (selectedInventorySlot >= currentPc().inventorySlots())
+            selectedInventorySlot = currentPc().inventorySlots() - 1;
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -332,9 +357,11 @@ public class ShopOverlay implements Screen {
 
             ShopEntry      entry = visibleEntries.get(i);
             ItemDefinition item  = ItemTable.get(entry.itemId());
-            int            price = buyPrice(entry, item);
-            boolean        canAfford =
-                    data.session().getLedger().getPartyGold() >= price;
+            var nativeQuote = data.session() instanceof com.phantasia.core.logic.NativeCampaignV5 nativeParty
+                    ? nativeParty.shopState().quote(data.catalog(), data.inventory(), visibleRows.get(i), nativeParty::hasFlag) : null;
+            int price = nativeQuote == null ? buyPrice(entry, item) : nativeQuote.price();
+            int remaining = nativeQuote == null ? entry.quantity() : nativeQuote.remaining();
+            boolean canAfford = data.session().getPartyGold() >= price && remaining != 0 && (nativeQuote == null || nativeQuote.priceInRange());
 
             // Selection highlight
             if (selected) {
@@ -359,14 +386,14 @@ public class ShopOverlay implements Screen {
                     LEFT_X + 390, ry, TextStyle.DATA, BORDER_STR);
 
             // Stock count (if limited)
-            if (entry.quantity() != -1) {
-                drawText(g, "×" + entry.quantity(),
+            if (remaining != -1) {
+                drawText(g, remaining == 0 ? "OUT" : "×" + remaining,
                         LEFT_X + LEFT_W - 120, ry, TextStyle.DATA, BORDER_STR);
             }
 
             // Price — red if unaffordable
             Color priceColor = canAfford ? GOLD : DANGER;
-            drawText(g, price + "g",
+            drawText(g, nativeQuote != null && !nativeQuote.priceInRange() ? "LIMIT" : price + "g",
                     LEFT_X + LEFT_W - 54, ry, TextStyle.DATA, priceColor);
         }
 
@@ -381,11 +408,11 @@ public class ShopOverlay implements Screen {
     }
 
     private void renderPartyPanel(Graphics2D g) {
-        List<PlayerCharacter> party = data.session().getParty();
+        List<? extends LocalSession.Member> party = data.session().localMembers();
         if (party.isEmpty()) return;
 
-        PlayerCharacter pc  = currentPc();
-        Inventory       inv = new Inventory(pc);
+        LocalSession.Member pc  = currentPc();
+        LocalInventory  inv = new LocalInventory(pc);
 
         int headerY = CONTENT_Y + 24;
 
@@ -409,7 +436,7 @@ public class ShopOverlay implements Screen {
 
         // Inventory slots
         int slotY = selectorY + 26;
-        for (int slot = 0; slot < Inventory.MAX_ITEMS; slot++) {
+        for (int slot = 0; slot < currentPc().inventorySlots(); slot++) {
             int     ry       = slotY + slot * ROW_H;
             boolean selected = inventoryFocused && (slot == selectedInventorySlot);
             int     itemId   = inv.getItemId(slot);
@@ -486,8 +513,8 @@ public class ShopOverlay implements Screen {
     // Utility helpers
     // ─────────────────────────────────────────────────────────────────────
 
-    private PlayerCharacter currentPc() {
-        List<PlayerCharacter> party = data.session().getParty();
+    private LocalSession.Member currentPc() {
+        List<? extends LocalSession.Member> party = data.session().localMembers();
         int idx = Math.min(selectedPartyIndex, party.size() - 1);
         return party.get(idx);
     }

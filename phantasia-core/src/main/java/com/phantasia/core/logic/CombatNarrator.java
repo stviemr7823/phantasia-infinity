@@ -140,6 +140,8 @@ public class CombatNarrator {
                     f.succeeded()
                             ? f.entityName() + " flees!"
                             : f.entityName() + " can't escape!";
+            case CombatEvent.ItemUsed item -> item.actorName() + " uses " + item.itemName() + " on "
+                    + item.targetName() + " — restores " + item.amount() + (item.magic() ? " MP." : " HP.");
         };
     }
 

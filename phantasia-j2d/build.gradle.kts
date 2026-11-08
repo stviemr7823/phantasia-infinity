@@ -24,3 +24,9 @@ tasks.named<JavaExec>("run") {
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
 }
+// Isolated, windowed authoring diagnostic; normal launch/save behavior is unchanged.
+tasks.register<JavaExec>("runDiagnostic") {
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("com.phantasia.j2d.diagnostic.DiagnosticMain")
+    workingDir = rootProject.projectDir
+}

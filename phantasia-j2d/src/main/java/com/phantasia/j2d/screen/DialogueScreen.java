@@ -1,7 +1,7 @@
 // phantasia-j2d/src/main/java/com/phantasia/j2d/screen/DialogueScreen.java
 package com.phantasia.j2d.screen;
 
-import com.phantasia.core.data.GameSession;
+import com.phantasia.core.data.LocalSession;
 import com.phantasia.core.model.*;
 import com.phantasia.j2d.engine.GameCanvas;
 import com.phantasia.j2d.engine.Screen;
@@ -38,7 +38,7 @@ public class DialogueScreen implements Screen {
      */
     public record DialogueData(
             NpcDefinition       npc,
-            GameSession         session,
+            LocalSession        session,
             DialogueContext     context,
             List<String>        choices
     ) {}

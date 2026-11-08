@@ -14,11 +14,11 @@ import java.util.logging.Logger;
 /**
  * Serializes and deserializes {@link NpcRegistry} contents to {@code npcs.dat}.
  *
- * <h3>Binary format — version 1</h3>
+ * <h3>Binary format — version 2 (version 1 reader retained)</h3>
  * <pre>
  *   Header:
  *     4 bytes  magic "NPCS"
- *     2 bytes  version = 1
+ *     2 bytes  version = 2
  *     2 bytes  NPC count
  *
  *   Per NPC:
@@ -26,8 +26,10 @@ import java.util.logging.Logger;
  *     string   name
  *     1 byte   NpcRole ordinal
  *     2 bytes  shopId
- *     string   spriteAssetId  (empty string if null)
- *     string   portraitAssetId (empty string if null)
+ *     v2 nullable string spriteAssetId
+ *     v2 nullable string portraitAssetId
+ *
+ *     v2: boolean animation present; nullable UTF-8 keys, two floats, facing boolean.
  *
  *     Dialogue:
  *       2 bytes  node count
@@ -41,7 +43,8 @@ import java.util.logging.Logger;
  *         1 byte   flagToSet  (0xFF = none, else bit value)
  *         2 bytes  giveItemId (0 = none)
  *
- *   String encoding: 2-byte length (big-endian) + UTF-8 bytes.
+ *   Ordinary strings: u16 UTF-8 byte length + bytes. v2 nullable strings:
+ *   i32 byte length (-1 = null) + UTF-8 bytes, limited to 1,000,000 bytes.
  * </pre>
  */
 public final class NpcBaker {
@@ -49,7 +52,7 @@ public final class NpcBaker {
     private static final Logger LOG = Logger.getLogger(NpcBaker.class.getName());
 
     private static final byte[] MAGIC   = {'N', 'P', 'C', 'S'};
-    private static final short  VERSION = 1;
+    private static final short  VERSION = 2;
     private static final int    NO_FLAG = 0xFF;
 
     private NpcBaker() {}
@@ -70,7 +73,7 @@ public final class NpcBaker {
 
             out.write(MAGIC);
             out.writeShort(VERSION);
-            out.writeShort(npcs.size());
+            ushort(out, npcs.size());
 
             for (NpcDefinition npc : npcs) {
                 writeNpc(out, npc);
@@ -82,16 +85,27 @@ public final class NpcBaker {
 
     private static void writeNpc(DataOutputStream out, NpcDefinition npc)
             throws IOException {
-        out.writeShort(npc.getId());
+        ushort(out, npc.getId());
         writeString(out, npc.getName());
         out.writeByte(npc.getRole().ordinal());
-        out.writeShort(npc.getShopId());
-        writeString(out, npc.getSpriteAssetId());
-        writeString(out, npc.getPortraitAssetId());
+        ushort(out, npc.getShopId());
+        InteriorMapCodec.string(out, npc.getSpriteAssetId());
+        InteriorMapCodec.string(out, npc.getPortraitAssetId());
+
+        var animation = npc.getAnimationProfile();
+        out.writeBoolean(animation != null);
+        if (animation != null) {
+            InteriorMapCodec.string(out, animation.idleAnimation());
+            InteriorMapCodec.string(out, animation.walkAnimation());
+            InteriorMapCodec.string(out, animation.talkAnimation());
+            out.writeFloat(animation.wanderRadius());
+            out.writeFloat(animation.paceSpeed());
+            out.writeBoolean(animation.facesPlayer());
+        }
 
         // Dialogue nodes
         var nodes = npc.getDialogue().getNodes();
-        out.writeShort(nodes.size());
+        ushort(out, nodes.size());
         for (DialogueNode node : nodes) {
             writeNode(out, node);
         }
@@ -100,7 +114,7 @@ public final class NpcBaker {
     private static void writeNode(DataOutputStream out, DialogueNode node)
             throws IOException {
         // Lines
-        out.writeShort(node.lines().size());
+        ushort(out, node.lines().size());
         for (String line : node.lines()) {
             writeString(out, line);
         }
@@ -119,13 +133,13 @@ public final class NpcBaker {
         }
 
         // giveItemId
-        out.writeShort(node.giveItemId());
+        ushort(out, node.giveItemId());
     }
 
     private static void writeFlagSet(DataOutputStream out, Set<QuestFlag> flags)
             throws IOException {
         out.writeByte(flags.size());
-        for (QuestFlag f : flags) {
+        for (QuestFlag f : flags.stream().sorted(java.util.Comparator.comparingInt(flag -> flag.bit)).toList()) {
             out.writeByte(f.bit);
         }
     }
@@ -161,13 +175,13 @@ public final class NpcBaker {
             }
 
             short version = in.readShort();
-            if (version != VERSION) {
+            if (version != 1 && version != VERSION) {
                 throw new IOException("Unsupported npcs.dat version: " + version);
             }
 
             int count = in.readShort() & 0xFFFF;
             for (int i = 0; i < count; i++) {
-                registry.register(readNpc(in));
+                registry.register(readNpc(in, version));
             }
         }
 
@@ -175,21 +189,29 @@ public final class NpcBaker {
         return registry;
     }
 
-    private static NpcDefinition readNpc(DataInputStream in) throws IOException {
+    private static NpcDefinition readNpc(DataInputStream in, int version) throws IOException {
         int    id      = in.readShort() & 0xFFFF;
         String name    = readString(in);
         int    roleOrd = in.readByte() & 0xFF;
         int    shopId  = in.readShort() & 0xFFFF;
-        String sprite  = readString(in);
-        String portrait = readString(in);
+        String sprite  = version >= 2 ? InteriorMapCodec.string(in) : readString(in);
+        String portrait = version >= 2 ? InteriorMapCodec.string(in) : readString(in);
 
         NpcRole[] roles = NpcRole.values();
         NpcRole role = roleOrd < roles.length ? roles[roleOrd] : NpcRole.INFORMANT;
 
         NpcDefinition npc = new NpcDefinition(id, name, role,
-                sprite.isEmpty() ? null : sprite);
+                version == 1 && sprite.isEmpty() ? null : sprite);
         npc.shopId(shopId);
-        if (!portrait.isEmpty()) npc.portraitAssetId(portrait);
+        if (version >= 2 || !portrait.isEmpty()) npc.portraitAssetId(portrait);
+
+        if (version >= 2) {
+            npc.animationProfile(in.readBoolean()
+                    ? new com.phantasia.core.model.AnimationProfile(
+                        InteriorMapCodec.string(in), InteriorMapCodec.string(in),
+                        InteriorMapCodec.string(in), in.readFloat(), in.readFloat(), in.readBoolean())
+                    : null);
+        }
 
         // Dialogue nodes
         int nodeCount = in.readShort() & 0xFFFF;
@@ -251,10 +273,15 @@ public final class NpcBaker {
     // I/O helpers
     // -------------------------------------------------------------------------
 
+    private static void ushort(DataOutput out, int value) throws IOException {
+        if (value < 0 || value > 65535) throw new IOException("NPC value exceeds u16: " + value);
+        out.writeShort(value);
+    }
+
     private static void writeString(DataOutputStream out, String s) throws IOException {
         if (s == null) s = "";
         byte[] bytes = s.getBytes(StandardCharsets.UTF_8);
-        out.writeShort(bytes.length);
+        ushort(out, bytes.length);
         out.write(bytes);
     }
 
@@ -265,3 +292,4 @@ public final class NpcBaker {
         return new String(bytes, StandardCharsets.UTF_8);
     }
 }
+

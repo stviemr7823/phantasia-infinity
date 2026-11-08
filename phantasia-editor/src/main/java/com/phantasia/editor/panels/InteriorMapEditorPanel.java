@@ -4,6 +4,10 @@ package com.phantasia.editor.panels;
 import com.phantasia.core.world.*;
 import com.phantasia.editor.*;
 import com.phantasia.editor.commands.PaintTilesCommand;
+import com.phantasia.editor.commands.EditFeatureCommand;
+import com.phantasia.editor.commands.EditNpcPlacementCommand;
+import com.phantasia.editor.commands.EditEntranceCommand;
+import com.phantasia.core.model.PlacedNpc;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -51,6 +55,25 @@ public class InteriorMapEditorPanel extends JPanel implements EditorFrame.Worksp
 
     private final MapCanvas         canvas;
     private PaintTilesCommand       activePaintCmd;   // current drag stroke
+
+    private final DefaultListModel<String> featureModel = new DefaultListModel<>();
+    private final DefaultListModel<String> npcModel = new DefaultListModel<>(), entranceModel = new DefaultListModel<>();
+    private int selectedX, selectedY;
+    private final EditorStateListener contentListener = new EditorStateListener() {
+        @Override public void onDataChanged(String key) {
+            if (tabKey.equals(key) || key.startsWith("npc:")) {
+                rebuildFeatureList(featureModel); rebuildPlacements(); canvas.repaint();
+            }
+        }
+    };
+
+    @Override public void addNotify() {
+        super.addNotify(); EditorState.get().addListener(contentListener);
+        rebuildFeatureList(featureModel); rebuildPlacements();
+    }
+    @Override public void removeNotify() {
+        EditorState.get().removeListener(contentListener); super.removeNotify();
+    }
 
     // Tile colors — fallback rendering when no sprites are loaded
     private static final Color[] TOWN_TILE_COLORS = {
@@ -183,10 +206,17 @@ public class InteriorMapEditorPanel extends JPanel implements EditorFrame.Worksp
         panel.setOpaque(false);
 
         // Feature list
-        DefaultListModel<String> featureModel = new DefaultListModel<>();
         rebuildFeatureList(featureModel);
         JList<String> featureList = new JList<>(featureModel);
         featureList.setFont(EditorTheme.FONT_SMALL);
+        featureList.addMouseListener(new MouseAdapter() {
+            @Override public void mouseClicked(MouseEvent e) {
+                int index = featureList.getSelectedIndex();
+                if (e.getClickCount() == 2 && index >= 0 && index < map.getFeatures().size()) {
+                    PlacedFeature f = map.getFeatures().get(index); showFeatureDialog(f.x(), f.y());
+                }
+            }
+        });
 
         JPanel featurePanel = EditorUtils.titledPanel("Features", new BorderLayout());
         featurePanel.add(new JScrollPane(featureList), BorderLayout.CENTER);
@@ -201,16 +231,33 @@ public class InteriorMapEditorPanel extends JPanel implements EditorFrame.Worksp
         settingsPanel.add(EditorUtils.label("Light: " + s.getAmbientLight()));
         settingsPanel.add(EditorUtils.label("Torch: " + s.getTorchRadius()));
 
-        // NPC list
-        JPanel npcPanel = EditorUtils.titledPanel("NPCs (" + map.getPlacedNpcs().size() + ")", new BorderLayout());
-        DefaultListModel<String> npcModel = new DefaultListModel<>();
-        for (var npc : map.getPlacedNpcs())
-            npcModel.addElement("NPC #" + npc.npcId() + " at (" + npc.x() + "," + npc.y() + ")");
-        npcPanel.add(new JScrollPane(new JList<>(npcModel)), BorderLayout.CENTER);
-
-        panel.add(featurePanel,  BorderLayout.NORTH);
-        panel.add(npcPanel,      BorderLayout.CENTER);
-        panel.add(settingsPanel, BorderLayout.SOUTH);
+        JPanel npcPanel = EditorUtils.titledPanel("NPC placements", new BorderLayout());
+        JList<String> npcList = new JList<>(npcModel);
+        npcList.addMouseListener(new MouseAdapter() {
+            @Override public void mouseClicked(MouseEvent e) {
+                int i = npcList.getSelectedIndex();
+                if (e.getClickCount() == 2 && i >= 0 && i < map.getPlacedNpcs().size()) {
+                    PlacedNpc n = map.getPlacedNpcs().get(i); showNpcDialog(n.x(), n.y(), n);
+                }
+            }
+        });
+        npcPanel.add(new JScrollPane(npcList));
+        JPanel entrancePanel = EditorUtils.titledPanel("Entrances (* = default)", new BorderLayout());
+        JList<String> entranceList = new JList<>(entranceModel);
+        entranceList.addMouseListener(new MouseAdapter() {
+            @Override public void mouseClicked(MouseEvent e) {
+                int i = entranceList.getSelectedIndex();
+                if (e.getClickCount() == 2 && i >= 0 && i < map.getEntrances().size()) {
+                    MapEntrance n = map.getEntrances().get(i);
+                    showEntranceDialog(n.position() == null ? 0 : n.position().x(), n.position() == null ? 0 : n.position().y(), n);
+                }
+            }
+        });
+        entrancePanel.add(new JScrollPane(entranceList));
+        rebuildPlacements();
+        JPanel lists = new JPanel(new GridLayout(3, 1, 0, 6));
+        lists.add(featurePanel); lists.add(npcPanel); lists.add(entrancePanel);
+        panel.add(lists, BorderLayout.CENTER); panel.add(settingsPanel, BorderLayout.SOUTH);
         return panel;
     }
 
@@ -218,6 +265,17 @@ public class InteriorMapEditorPanel extends JPanel implements EditorFrame.Worksp
         model.clear();
         for (PlacedFeature f : map.getFeatures())
             model.addElement(f.featureType().name() + " (" + f.x() + "," + f.y() + ")");
+    }
+
+    private void rebuildPlacements() {
+        npcModel.clear(); entranceModel.clear();
+        for (var npc : map.getPlacedNpcs()) {
+            var def = EditorState.get().getNpc(npc.npcId());
+            npcModel.addElement("#" + npc.npcId() + (def == null ? "" : " " + def.getName())
+                    + " (" + npc.x() + "," + npc.y() + ")");
+        }
+        for (var e : map.getEntrances()) entranceModel.addElement(
+                (java.util.Objects.equals(e.id(), map.getDefaultEntranceId()) ? "* " : "") + e.id() + " " + e.position());
     }
 
     // =====================================================================
@@ -234,6 +292,15 @@ public class InteriorMapEditorPanel extends JPanel implements EditorFrame.Worksp
         gridBox.setOpaque(false);
         gridBox.setForeground(EditorTheme.TEXT);
         JButton fillBtn = EditorUtils.button("Fill All");
+        JButton validate = EditorUtils.button("Validate");
+        validate.addActionListener(e -> {
+            var issues = EditorState.get().validateAuthoredContent();
+            JTextArea report = new JTextArea(issues.isEmpty() ? "No structural errors found."
+                    : String.join("\n", issues.stream().map(Object::toString).toList()), 16, 65);
+            report.setEditable(false); report.setCaretPosition(0);
+            JOptionPane.showMessageDialog(this, new JScrollPane(report), "Content validation",
+                    issues.isEmpty() ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.ERROR_MESSAGE);
+        });
         JLabel  infoLabel = EditorUtils.label(map.getWidth() + "×" + map.getHeight()
                 + "  " + map.getMapType() + "  id:" + map.getId());
 
@@ -246,6 +313,11 @@ public class InteriorMapEditorPanel extends JPanel implements EditorFrame.Worksp
         bar.add(zoomOut);
         bar.add(gridBox);
         bar.add(fillBtn);
+        bar.add(validate);
+        JButton npcButton = EditorUtils.button("NPC…"), entranceButton = EditorUtils.button("Entrance…");
+        npcButton.addActionListener(e -> showNpcDialog(selectedX, selectedY, map.getNpcAt(selectedX, selectedY)));
+        entranceButton.addActionListener(e -> showEntranceDialog(selectedX, selectedY, entranceAt(selectedX, selectedY)));
+        bar.add(npcButton); bar.add(entranceButton);
         bar.add(Box.createHorizontalStrut(20));
         bar.add(infoLabel);
         return bar;
@@ -273,44 +345,67 @@ public class InteriorMapEditorPanel extends JPanel implements EditorFrame.Worksp
     private void showFeatureDialog(int tx, int ty) {
         PlacedFeature existing = map.getFeatureAt(tx, ty);
 
-        JComboBox<PlacedFeatureType> typeBox = new JComboBox<>(PlacedFeatureType.values());
-        JTextField dataField = new JTextField(
-                existing != null && existing.serviceData() != null
-                        ? existing.serviceData().toString() : "", 20);
+        FeatureEditForm form = new FeatureEditForm(tx, ty, existing);
+        JScrollPane scroll = new JScrollPane(form);
+        scroll.setPreferredSize(new Dimension(580, 520));
+        String[] options = existing == null ? new String[]{"Place", "Cancel"}
+                : new String[]{"Update", "Remove", "Cancel"};
+        while (true) {
+            int result = JOptionPane.showOptionDialog(this, scroll,
+                    "Feature at (" + tx + ", " + ty + ")", JOptionPane.DEFAULT_OPTION,
+                    JOptionPane.PLAIN_MESSAGE, null, options, options[0]);
+            if (existing != null && result == 1) {
+                EditorState.get().execute(new EditFeatureCommand(map, existing, null));
+            } else if (result == 0) {
+                try {
+                    EditorState.get().execute(new EditFeatureCommand(map, existing, form.readFeature()));
+                } catch (IllegalArgumentException ex) {
+                    JOptionPane.showMessageDialog(this, ex.getMessage(), "Check feature fields", JOptionPane.ERROR_MESSAGE);
+                    continue; // preserve the form and its draft values
+                }
+            } else return;
+            rebuildFeatureList(featureModel); canvas.repaint();
+            return;
+        }
+    }
 
-        if (existing != null) typeBox.setSelectedItem(existing.featureType());
+    private MapEntrance entranceAt(int x, int y) {
+        return map.getEntrances().stream().filter(e -> new WorldPosition(x, y).equals(e.position())).findFirst().orElse(null);
+    }
 
-        JPanel panel = new JPanel(new GridLayout(3, 2, 6, 6));
-        panel.add(new JLabel("Feature Type:"));
-        panel.add(typeBox);
-        panel.add(new JLabel("Data (text):"));
-        panel.add(dataField);
-        panel.add(new JLabel("Position:"));
-        panel.add(new JLabel("(" + tx + ", " + ty + ")"));
+    private void showNpcDialog(int x, int y, PlacedNpc old) {
+        NpcPlacementForm form = new NpcPlacementForm(x, y, old, EditorState.get().getNpcs().values());
+        String[] choices = old == null ? new String[]{"Place", "Cancel"} : new String[]{"Update", "Remove", "Cancel"};
+        while (true) {
+            int choice = JOptionPane.showOptionDialog(this, form, "NPC placement", JOptionPane.DEFAULT_OPTION,
+                    JOptionPane.PLAIN_MESSAGE, null, choices, choices[0]);
+            try {
+                if (old != null && choice == 1) EditorState.get().execute(new EditNpcPlacementCommand(map, old, null));
+                else if (choice == 0) {
+                    PlacedNpc value = form.readPlacement();
+                    if (!map.inBounds(value.x(), value.y())) throw new IllegalArgumentException("NPC must be inside the map");
+                    EditorState.get().execute(new EditNpcPlacementCommand(map, old, value));
+                } else return;
+                rebuildPlacements(); canvas.repaint(); return;
+            } catch (IllegalArgumentException ex) { JOptionPane.showMessageDialog(this, ex.getMessage(), "Check NPC fields", JOptionPane.ERROR_MESSAGE); }
+        }
+    }
 
-        String[] options = existing != null
-                ? new String[]{"Update", "Remove", "Cancel"}
-                : new String[]{"Place", "Cancel"};
-
-        int result = JOptionPane.showOptionDialog(this, panel,
-                "Feature at (" + tx + ", " + ty + ")",
-                JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE,
-                null, options, options[0]);
-
-        if (existing != null && result == 1) {
-            // Remove
-            map.removeFeature(existing);
-            EditorState.get().markDirty(tabKey);
-            canvas.repaint();
-        } else if (result == 0) {
-            // Place or Update
-            if (existing != null) map.removeFeature(existing);
-            PlacedFeatureType type = (PlacedFeatureType) typeBox.getSelectedItem();
-            String data = dataField.getText().trim();
-            map.addFeature(new PlacedFeature(tx, ty, type,
-                    data.isEmpty() ? null : data));
-            EditorState.get().markDirty(tabKey);
-            canvas.repaint();
+    private void showEntranceDialog(int x, int y, MapEntrance old) {
+        EntranceEditForm form = new EntranceEditForm(x, y, old, map.getDefaultEntranceId());
+        String[] choices = old == null ? new String[]{"Place", "Cancel"} : new String[]{"Update", "Remove", "Cancel"};
+        while (true) {
+            int choice = JOptionPane.showOptionDialog(this, form, "Map entrance", JOptionPane.DEFAULT_OPTION,
+                    JOptionPane.PLAIN_MESSAGE, null, choices, choices[0]);
+            try {
+                if (old != null && choice == 1) EditorState.get().execute(new EditEntranceCommand(map, old, null, false));
+                else if (choice == 0) {
+                    MapEntrance value = form.readEntrance();
+                    if (!MapEntrances.isClear(map, value.position())) throw new IllegalArgumentException("Choose a clear passable tile away from NPCs, stairs, exits and traps");
+                    EditorState.get().execute(new EditEntranceCommand(map, old, value, form.isDefaultEntrance()));
+                } else return;
+                rebuildPlacements(); canvas.repaint(); return;
+            } catch (IllegalArgumentException ex) { JOptionPane.showMessageDialog(this, ex.getMessage(), "Check entrance fields", JOptionPane.ERROR_MESSAGE); }
         }
     }
 
@@ -331,9 +426,14 @@ public class InteriorMapEditorPanel extends JPanel implements EditorFrame.Worksp
                     int ty = e.getY() / cellSize;
                     if (!map.inBounds(tx, ty)) return;
 
+                    selectedX = tx; selectedY = ty;
                     if (SwingUtilities.isRightMouseButton(e)) {
-                        showFeatureDialog(tx, ty);
-                        return;
+                        JPopupMenu menu = new JPopupMenu();
+                        JMenuItem feature = new JMenuItem("Feature…"), npc = new JMenuItem("NPC placement…"), entrance = new JMenuItem("Entrance…");
+                        feature.addActionListener(event -> showFeatureDialog(tx, ty));
+                        npc.addActionListener(event -> showNpcDialog(tx, ty, map.getNpcAt(tx, ty)));
+                        entrance.addActionListener(event -> showEntranceDialog(tx, ty, entranceAt(tx, ty)));
+                        menu.add(feature); menu.add(npc); menu.add(entrance); menu.show(MapCanvas.this, e.getX(), e.getY()); return;
                     }
 
                     if (e.isControlDown()) {
@@ -436,6 +536,14 @@ public class InteriorMapEditorPanel extends JPanel implements EditorFrame.Worksp
                 g2.drawString(label, px + 3, py + cellSize - 4);
             }
 
+            // Entrances are authored markers; they do not replace terrain.
+            for (var e : map.getEntrances()) {
+                if (e.position() == null) continue;
+                int px = e.position().x() * cellSize, py = e.position().y() * cellSize;
+                g2.setColor(new Color(90, 245, 170)); g2.drawRect(px + 3, py + 3, cellSize - 7, cellSize - 7);
+                g2.drawString(java.util.Objects.equals(e.id(), map.getDefaultEntranceId()) ? "E*" : "E", px + 3, py + cellSize / 2);
+            }
+
             // ── Draw placed NPCs ─────────────────────────────────────────
             for (var npc : map.getPlacedNpcs()) {
                 int px = npc.x() * cellSize;
@@ -475,3 +583,4 @@ public class InteriorMapEditorPanel extends JPanel implements EditorFrame.Worksp
         }
     }
 }
+

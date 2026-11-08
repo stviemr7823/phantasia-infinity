@@ -70,16 +70,33 @@ public final class InteriorMapRegistry {
 
     /**
      * Returns the player's spawn position when entering the given town map.
-     * Spawn is one tile north of the EXIT feature — the player appears just
-     * inside the town entrance.
+     * Uses this map's explicitly selected default entrance. Legacy imports and
+     * built-in towns receive a suggested entry during creation, not at runtime.
      *
      * @param mapId  the interior map ID (matches TownDefinition.id)
      * @return tile position in the map's Y-down coordinate system
      */
     public WorldPosition getSpawnPosition(int mapId) {
-        // All default towns share the same layout: EXIT at (9, 14)
-        // Player spawns at (9, 13) — one tile north of the exit
-        return new WorldPosition(9, 13);
+        InteriorMap map = byId.get(mapId);
+        if (map == null) throw new IllegalArgumentException("Unknown interior map #" + mapId);
+        MapEntrance entry = map.getEntrance(map.getDefaultEntranceId());
+        if (map.getDefaultEntranceId() == null || map.getDefaultEntranceId().isBlank()
+                || entry == null || entry.facing() == null || !MapEntrances.isClear(map, entry.position()))
+            throw new IllegalStateException("Map #" + mapId + " has no valid default entrance");
+        return entry.position();
+    }
+
+    public record Arrival(InteriorMap map, MapEntrance entrance) {}
+
+    /** Resolves an authored link without moving or mutating campaign state. */
+    public Arrival resolveLink(ServiceData.MapLinkData link) {
+        InteriorMap map = byId.get(link.targetMapId());
+        MapEntrance entry = map == null ? null : map.getEntrance(link.entranceId());
+        if (link.entranceId() == null || link.entranceId().isBlank()
+                || entry == null || entry.facing() == null || !MapEntrances.isClear(map, entry.position()))
+            throw new IllegalArgumentException("Unresolved or blocked entrance: map #"
+                    + link.targetMapId() + " / " + link.entranceId());
+        return new Arrival(map, entry);
     }
 
     // -------------------------------------------------------------------------
@@ -117,6 +134,7 @@ public final class InteriorMapRegistry {
         // ── Placed feature: exit ──────────────────────────────────────────────
         map.addFeature(new PlacedFeature(9, 14, PlacedFeatureType.EXIT));
 
+        MapEntrances.addSuggestedDefault(map);
         return map;
     }
 
@@ -135,6 +153,7 @@ public final class InteriorMapRegistry {
         map.addNpc(new PlacedNpc(211,  3, 4, Direction.SOUTH));  // inn, top-left
 
         map.addFeature(new PlacedFeature(9, 14, PlacedFeatureType.EXIT));
+        MapEntrances.addSuggestedDefault(map);
         return map;
     }
 
@@ -151,6 +170,7 @@ public final class InteriorMapRegistry {
         map.addNpc(new PlacedNpc(310, 15, 4, Direction.SOUTH));  // shop, top-right
 
         map.addFeature(new PlacedFeature(9, 14, PlacedFeatureType.EXIT));
+        MapEntrances.addSuggestedDefault(map);
         return map;
     }
 
@@ -167,6 +187,7 @@ public final class InteriorMapRegistry {
         map.addNpc(new PlacedNpc(410, 15, 4, Direction.SOUTH));  // shop, top-right
 
         map.addFeature(new PlacedFeature(9, 14, PlacedFeatureType.EXIT));
+        MapEntrances.addSuggestedDefault(map);
         return map;
     }
 
@@ -268,3 +289,4 @@ public final class InteriorMapRegistry {
                 map.setTile(x, y, tileIdx);
     }
 }
+

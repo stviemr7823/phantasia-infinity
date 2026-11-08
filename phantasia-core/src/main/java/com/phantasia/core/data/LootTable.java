@@ -36,6 +36,7 @@ public class LootTable {
     private int               rollCount = 1;     // number of random draws
 
     private static final Random RNG = new Random();
+    public static final int MAX_ROLLS = 1_000_000; // bounded content processing, not a gameplay balance value
 
     public LootTable() {}
 
@@ -75,28 +76,30 @@ public class LootTable {
      *
      * @return a LootResult with gold amount, guaranteed items, and rolled items
      */
-    public LootResult evaluate() {
-        int gold = goldMin + (goldMax > goldMin
-                ? RNG.nextInt(goldMax - goldMin + 1) : 0);
+    public LootResult evaluate() { return evaluate(RNG); }
 
+    /** Deterministic seam for tests; the normal caller retains ordinary random rolls. */
+    public LootResult evaluate(java.util.random.RandomGenerator random) {
+        java.util.Objects.requireNonNull(random);
+        if (goldMin < 0 || goldMax < goldMin || rollCount < 0 || rollCount > MAX_ROLLS)
+            throw new IllegalArgumentException("Invalid loot gold range or roll count");
+        for (var entry : guaranteed) validateEntry(entry, false);
+        long totalWeight = 0;
+        for (var entry : randomPool) { validateEntry(entry, true); totalWeight += entry.weight(); }
+        int gold = (int) (goldMin + (goldMax > goldMin ? random.nextLong((long) goldMax - goldMin + 1) : 0));
         List<LootEntry> results = new ArrayList<>(guaranteed);
-
-        if (!randomPool.isEmpty()) {
-            int totalWeight = randomPool.stream().mapToInt(LootEntry::weight).sum();
-            for (int roll = 0; roll < rollCount && totalWeight > 0; roll++) {
-                int r = RNG.nextInt(totalWeight);
-                int acc = 0;
-                for (LootEntry entry : randomPool) {
-                    acc += entry.weight();
-                    if (r < acc) {
-                        results.add(entry);
-                        break;
-                    }
-                }
+        for (int roll = 0; roll < rollCount && totalWeight > 0; roll++) {
+            long draw = random.nextLong(totalWeight), accumulated = 0;
+            for (var entry : randomPool) {
+                accumulated += entry.weight();
+                if (draw < accumulated) { results.add(entry); break; }
             }
         }
-
-        return new LootResult(gold, Collections.unmodifiableList(results));
+        return new LootResult(gold, List.copyOf(results));
+    }
+    private static void validateEntry(LootEntry entry, boolean weighted) {
+        if (!com.phantasia.core.model.item.ItemTable.exists(entry.itemId()) || entry.quantity() <= 0
+                || weighted && entry.weight() <= 0) throw new IllegalArgumentException("Invalid loot item, quantity or weight");
     }
 
     // -------------------------------------------------------------------------
